@@ -322,3 +322,75 @@ tests/           unit and property tests
 
 Nothing under `core/` imports from `generator/` at analysis time. That is what
 makes the reported numbers mean something.
+
+---
+
+## Images Gallery
+
+---
+
+### Command Dashboard
+
+<img width="1280" height="674" alt="image" src="https://github.com/user-attachments/assets/9b981d59-d3d6-4b76-8f96-c5057c8f5c10" />
+
+
+
+### Geo Forensic Map
+
+<img width="1280" height="674" alt="image" src="https://github.com/user-attachments/assets/0fd672b6-2aac-491e-a725-9cf1956426a1" />
+
+
+
+### Bloodhound
+
+<img width="1280" height="674" alt="image" src="https://github.com/user-attachments/assets/280bc45a-7a88-4c17-bb4e-3043286c9083" />
+
+
+
+### Timeline
+
+<img width="1280" height="677" alt="image" src="https://github.com/user-attachments/assets/dad3dd1b-a47d-48b8-bc00-ed1f05e9d353" />
+
+
+
+### Record Ledger
+
+<img width="1280" height="671" alt="image" src="https://github.com/user-attachments/assets/7e32a4bf-bda4-47c9-8503-61977589fa67" />
+
+
+
+### Investigate
+
+<img width="1280" height="675" alt="image" src="https://github.com/user-attachments/assets/28766e1a-3e07-4b3a-b128-c45626afdb84" />
+
+
+
+### Rebuild Log
+
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/c4bd47ad-ba21-4a6f-b9a0-21bad5c037e0" />
+
+
+
+### Provenance
+
+<img width="1280" height="668" alt="image" src="https://github.com/user-attachments/assets/3ac5551e-8458-4aae-81ee-0eebdd022825" />
+
+
+
+### Live Feed Demo
+
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/f6cc1e15-f7b0-4d72-940e-4f1857a4b927" />
+
+
+
+### Evaluation Metrics
+
+<img width="1280" height="677" alt="image" src="https://github.com/user-attachments/assets/ab5c255b-151d-4129-ae94-2cf203ac57e7" />
+
+
+
+
+
+
+
+
