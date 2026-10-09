@@ -378,6 +378,15 @@ every number in this dossier was produced with it off.
 
 ## 6. What changed for the live feed
 
+> **The twist landed mid-event**: *"the attacker has started modifying records
+> in real time"*, with a feed of incoming **and updated** records.
+> [docs/TWIST_RESPONSE.md](TWIST_RESPONSE.md) is the full account — what
+> changed, what it cost, and the five capabilities traded away for speed.
+> In short: three of the five requirements were already met, records became
+> **mutable** (a data-model change, not an architectural one), and an **alert
+> layer** went in between detection and the operator. The fusion weights, the
+> classifier and the reconstruction engine were untouched.
+
 The brief requires the prototype to work on a live feed after the twist, with
 at least one attack type absent from the batch data. We treated that as the
 real test of whether detection generalises.

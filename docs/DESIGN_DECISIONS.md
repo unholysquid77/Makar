@@ -511,3 +511,72 @@ changed which records the chain could speak to):
 | `481516` | 0.991 | 0.914 | 0.951 |
 | `271828` | 0.979 | 0.925 | 0.951 |
 | `999331` | 0.986 | 0.851 | 0.914 |
+
+---
+
+## D19. The twist made records mutable; detection never assumed otherwise
+
+**Decision.** `StreamProcessor` treats an arriving `record_id` it has already
+seen as an **update**, replaces the superseded version in place, and judges the
+edit by *how* each field changed rather than by re-running consistency.
+
+**Why re-running consistency failed.** The first implementation ran the scoped
+detectors over the record as it was and as it now is, and used the change in
+anomaly weight as the evidence. Elegant, general — and it caught **10%** of
+known malicious edits.
+
+The reason is specific and worth knowing: cargo conservation **deliberately
+stands down** across a port call containing a `LOADED`, `UNLOADED` or
+`TRANSFERRED` event, because cargo legitimately changes there. Correct batch
+behaviour, and it means the check is blind exactly where the attacker works.
+Of 30 known edits, 15 measured a consistency delta of exactly `0.00`.
+
+**The framing that worked is about time, not consistency.** A manifest record
+describes an event that has *already happened*. A loading at 09:00 does not
+justify revising that event's weight at 14:00. So fields are classified by
+transition — `null → value` (late-arriving, routine), `value → null` (data
+loss), `value → different value` (**an already-reported fact rewritten**) — and
+the consistency delta became the *modulator* rather than the signal:
+
+| altered a populated field | Δ consistency | severity |
+|---|---|---:|
+| yes | degraded | 0.90 |
+| yes | unchanged | 0.62 |
+| yes | improved | 0.15 |
+| no (filled only) | — | 0.10 |
+
+| version | malicious edits caught | corrections false-alarmed |
+|---|---:|---:|
+| re-run consistency | 10% | 0% |
+| **transition + delta** | **100%** | **0%** |
+
+Nothing in that table encodes what a malicious edit looks like, which is why it
+covers revision attacks nobody wrote a rule for.
+
+---
+
+## D20. Precision is not the same as not flooding operators
+
+**Decision.** An alert layer (`core/alerting.py`) sits between detection and
+the operator. Findings fold into one **open alert per container**, which
+updates in place and re-notifies only on genuinely new information: a
+probability rise of ≥ 0.12, a new evidence *layer*, or crossing 0.90.
+
+**Why.** Zero false alarms was already true, and it was not enough. A
+*correct* alert repeated forty times for one container is still a flood, and an
+operator who starts ignoring the feed is no better off than one being lied to.
+The live path raised one notification per flagged event; on a campaign-style
+attack that is forty interruptions for one problem.
+
+Grouping is by container because that is the unit a campaign targets and the
+unit an investigator actions. A siphon across twelve events is one problem.
+
+**Measured:** 68 findings → 58 notifications on a 977-event feed (15%
+suppressed). The unit test pins the extreme: 40 findings on one container
+produce **exactly one** notification, and the alert still reports all 40
+events — suppression hides the interruption, never the information.
+
+The 1.17× compression on this feed is honest rather than impressive, and the
+reason is worth stating: most attacks here hit *different* containers, and one
+alert per real problem is the correct answer. Pushing the ratio higher would
+mean grouping unrelated problems together, which would be worse.
