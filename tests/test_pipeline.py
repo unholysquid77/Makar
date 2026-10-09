@@ -6,6 +6,8 @@ runs without a generated dataset present.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from core.config import load_config
@@ -494,3 +496,63 @@ def test_the_graph_builds_and_answers_queries(analysis) -> None:
     neighbourhood = graph.neighbourhood(key, depth=2)
     assert 1 < len(neighbourhood) <= 200
     assert graph.provenance_chain(record_id)
+
+
+def test_generation_is_deterministic_across_processes(tmp_path) -> None:
+    """Two separate processes, different hash seeds, byte-identical output.
+
+    ``test_generation_is_deterministic`` above runs both generations in one
+    process, so it shares a ``PYTHONHASHSEED`` and cannot see hash-order
+    dependence. That is exactly the bug it missed: releasing freed record ids
+    into the recycling pool by iterating a ``set`` made the suspect manifest
+    differ between runs of the same seed, while the world, the clean manifest
+    and the chain all stayed identical.
+
+    The brief requires the data to be regenerable *exactly*, so this is
+    checked the only way that proves it.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    outputs = []
+    for index, hash_seed in enumerate(("0", "12345")):
+        target = tmp_path / f"run{index}"
+        env = {**os.environ, "PYTHONHASHSEED": hash_seed}
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/generate.py",
+                "--seed", "481516",
+                "--records", "900",
+                "--out", str(target),
+                "--no-emit-geojson",
+            ],
+            cwd=root,
+            env=env,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr.decode(errors="replace")
+        outputs.append(target)
+
+    for name in (
+        "manifest_suspect.csv",
+        "manifest_clean.csv",
+        "world.json",
+        "chain.json",
+        "node_chains.json",
+        "route_manifests.json",
+    ):
+        first = (outputs[0] / name).read_bytes()
+        second = (outputs[1] / name).read_bytes()
+        assert first == second, f"{name} differs between processes with different hash seeds"
+
+    # The answer key too, apart from its wall-clock stamp.
+    import json
+
+    a = json.loads((outputs[0] / "ground_truth.json").read_text(encoding="utf-8"))
+    b = json.loads((outputs[1] / "ground_truth.json").read_text(encoding="utf-8"))
+    for key in ("seed", "config_digest", "clean_record_count", "suspect_record_count", "summary", "entries"):
+        assert a[key] == b[key], f"ground truth differs in {key!r}"

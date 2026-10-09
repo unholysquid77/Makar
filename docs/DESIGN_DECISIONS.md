@@ -473,3 +473,41 @@ The same principle applies to the final port call of an in-progress voyage in
 before claiming a missing departure (D10). It is the same idea arrived at from
 two directions, and it is worth stating as a rule: **a consistency engine must
 distinguish "this did not happen" from "this has not happened yet."**
+
+
+---
+
+## D18. Determinism had to be verified across *processes*, not within one
+
+**Decision.** `tests/test_pipeline.py` runs the generator twice in separate
+subprocesses with different `PYTHONHASHSEED` values and requires byte-identical
+output.
+
+**Why.** The original determinism test ran both generations in one process, so
+they shared a hash seed — and that is exactly the bug it missed.
+
+Freed record ids were released into the insertion pool by iterating
+`set(deletions_pending)`. Set iteration order follows string hashing, which
+Python randomises per process, and the pool's `take()` pops a random *index*.
+So a different id got recycled on every run: the world, the clean manifest, the
+route histories and the provenance chain were all byte-identical, while
+**`manifest_suspect.csv` differed**.
+
+It surfaced only because wiping `out/` and re-running the documented README
+flow produced a different false-alarm split (2 clean / 0 noisy became
+1 clean / 1 noisy) with every other figure unchanged. A one-record difference
+in which id got recycled, nothing more — but "use a fixed random seed so the
+data can be regenerated exactly" is an explicit requirement, and a judge
+re-running the generator and getting different numbers would have been fatal.
+
+The fix is one `sorted()`. The lesson is that a reproducibility test which
+cannot observe hash-order dependence is not a reproducibility test.
+
+Final figures after the fix (mean F1 rose 0.936 → 0.939, since id recycling
+changed which records the chain could speak to):
+
+| seed | precision | recall | F1 |
+|---|---:|---:|---:|
+| `481516` | 0.991 | 0.914 | 0.951 |
+| `271828` | 0.979 | 0.925 | 0.951 |
+| `999331` | 0.986 | 0.851 | 0.914 |

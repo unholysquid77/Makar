@@ -20,9 +20,9 @@ Thresholds were tuned on seed `481516`; the other two seeds were generated
 
 | seed | precision | recall | F1 | false alarms (clean) | false alarms (noisy) | classification | repair (exact) | deletion recall |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `481516` *(tuned on)* | 0.991 | 0.910 | **0.949** | 2 / 4,526 | **0 / 281** | 90.5% | 89.9% | 94.5% |
-| `271828` *(held out)* | 0.979 | 0.921 | **0.949** | 5 / 4,531 | **0 / 277** | 87.1% | 96.6% | 98.2% |
-| `999331` *(held out)* | 0.986 | 0.847 | **0.911** | 3 / 4,530 | **0 / 275** | 92.9% | 88.1% | 96.4% |
+| `481516` *(tuned on)* | 0.991 | 0.914 | **0.951** | 2 / 4,522 | **0 / 285** | 90.6% | 90.0% | 94.5% |
+| `271828` *(held out)* | 0.979 | 0.925 | **0.951** | 5 / 4,537 | **0 / 271** | 87.2% | 96.6% | 98.2% |
+| `999331` *(held out)* | 0.986 | 0.851 | **0.914** | 3 / 4,532 | **0 / 273** | 92.9% | 88.2% | 96.4% |
 
 **Zero false alarms on noise-only records across all three seeds.** Half this
 problem is not flagging the legitimate shipment with a blank cell and a
@@ -35,7 +35,7 @@ Per attack type on the tuning seed:
 | `FABRICATED` | 44 | 44 | **100%** |
 | `DELETED` (by slot) | 55 | 52 | **94.5%** |
 | `DUPLICATED` | 75 | 67 | **89.3%** |
-| `MODIFIED` | 125 | 111 | **88.8%** |
+| `MODIFIED` | 125 | 112 | **89.6%** |
 
 ### Ablation — the provenance chain is not doing all the work
 
@@ -44,7 +44,7 @@ headline would hide how much the consistency engines contribute.
 
 | configuration | precision | recall | F1 |
 |---|---:|---:|---:|
-| all detectors | 0.991 | 0.910 | 0.949 |
+| all detectors | 0.991 | 0.914 | 0.951 |
 | **forensics only, chain disabled** | 0.978 | 0.369 | 0.536 |
 
 The chain commits **hashes, never values**, and covers only 85% of the

@@ -235,7 +235,7 @@ per-criterion scores. The answer to "why this record and not that one?" is on
 screen, not in a model.
 
 **Honest reporting of its own weaknesses.** The ablation shows recall falling
-0.910 → 0.369 without the chain. The calibration gap is printed. Collateral
+0.914 → 0.369 without the chain. The calibration gap is printed. Collateral
 flags are separated from false alarms. A system with one dominant feature that
 hides the ablation is asking to be caught.
 

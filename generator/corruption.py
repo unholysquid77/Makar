@@ -999,7 +999,14 @@ def corrupt_manifest(
             )
         )
 
-    for rid in set(deletions_pending):
+    # Sorted, not just de-duplicated. Set iteration order follows string
+    # hashing, which Python randomises per process, and the order here decides
+    # the order ids enter the recycling pool -- from which `take()` pops a
+    # random *index*. Iterating the raw set made the suspect manifest differ
+    # between two runs of the same seed, while the world, the clean manifest
+    # and the chain all stayed identical. "Regenerated exactly" has to mean
+    # exactly.
+    for rid in sorted(set(deletions_pending)):
         if rid in records:
             del records[rid]
             order.remove(rid)
