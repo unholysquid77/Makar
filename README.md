@@ -1,0 +1,283 @@
+# Makar
+
+**Distributed cargo forensics, provenance & reconstruction.**
+
+> Makar takes a suspect cargo manifest and reconstructs a trustworthy one,
+> fusing provenance, temporal, spatial, graph, statistical and
+> cargo-consistency evidence. Every record in the output is marked
+> `ORIGINAL`, `REPAIRED`, `REMOVED` or `UNRECOVERABLE` — nothing is silently
+> changed.
+
+Built for **The Lost Manifest — Cargo Tampering Detection & Reconstruction**.
+
+---
+
+## Results
+
+Measured against a private injection log the detection pipeline never reads.
+Thresholds were tuned on seed `481516`; the other two seeds were generated
+**after** tuning stopped and never used to adjust anything.
+
+| seed | precision | recall | F1 | false alarms (clean) | false alarms (noisy) | classification | repair (exact) | deletion recall |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `481516` *(tuned on)* | 0.991 | 0.910 | **0.949** | 2 / 4,526 | **0 / 281** | 90.5% | 89.9% | 94.5% |
+| `271828` *(held out)* | 0.979 | 0.921 | **0.949** | 5 / 4,531 | **0 / 277** | 87.1% | 96.6% | 98.2% |
+| `999331` *(held out)* | 0.986 | 0.847 | **0.911** | 3 / 4,530 | **0 / 275** | 92.9% | 88.1% | 96.4% |
+
+**Zero false alarms on noise-only records across all three seeds.** Half this
+problem is not flagging the legitimate shipment with a blank cell and a
+day-first date, and that is the number that says so.
+
+Per attack type on the tuning seed:
+
+| attack | injected | detected | recall |
+|---|---:|---:|---:|
+| `FABRICATED` | 44 | 44 | **100%** |
+| `DELETED` (by slot) | 55 | 52 | **94.5%** |
+| `DUPLICATED` | 75 | 67 | **89.3%** |
+| `MODIFIED` | 125 | 111 | **88.8%** |
+
+### Ablation — the provenance chain is not doing all the work
+
+The chain is the strongest single evidence source, so reporting only the
+headline would hide how much the consistency engines contribute.
+
+| configuration | precision | recall | F1 |
+|---|---:|---:|---:|
+| all detectors | 0.991 | 0.910 | 0.949 |
+| **forensics only, chain disabled** | 0.978 | 0.369 | 0.536 |
+
+The chain commits **hashes, never values**, and covers only 85% of the
+timeline. It can prove a record changed; it cannot say what the record used to
+contain. Reconstruction is therefore entirely the forensic engines' work — and
+where the chain *does* reach, hashing a candidate repair either **confirms** it
+outright or refutes it.
+
+### Live stream — attack patterns absent from the batch data
+
+900 events, 48 attacks, 852 legitimate, **0 false alarms on untouched
+containers**, 1.6 ms mean latency per event.
+
+| pattern | what it defeats | event recall | campaign recall |
+|---|---|---:|---:|
+| `ghost_transfer` | lineage | 100% | **100%** |
+| `identity_swap` | identity continuity | 25% | **57%** |
+| `weight_siphon` | the per-step conservation *tolerance* | 26% | **50%** |
+
+Campaign recall is the operationally meaningful figure: a siphon spans many
+events, its *onset* contradicts prior history, and once the state is
+consistently wrong there is nothing left to contradict. Both are reported.
+
+---
+
+## How to Run
+
+Requires **Python 3.11+** and **Node 18+**. No external services, no database
+server, no API keys.
+
+### 1. Install
+
+```bash
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+npm --prefix frontend install
+```
+
+On macOS/Linux use `.venv/bin/python` instead of `.venv/Scripts/python.exe`.
+
+### 2. Generate the dataset
+
+```bash
+.venv/Scripts/python.exe scripts/generate.py --seed 481516 --records 5000 --out out
+```
+
+Builds the synthetic world, the clean manifest, the corrupted suspect
+manifest, the provenance chain and the four-node network. The same seed
+reproduces all of it exactly.
+
+### 3. Analyse and score
+
+```bash
+.venv/Scripts/python.exe scripts/evaluate.py --out out --ablation
+```
+
+### 4. Generate the forensic report
+
+```bash
+.venv/Scripts/python.exe scripts/report.py --out out --top 25
+```
+
+Writes `out/report.md` — totals by tampering type, ranked suspicious records
+with the evidence behind each flag, affected owners and ports, inferred
+deletions, the suspected attack timeline, and the data-quality findings that
+were deliberately **not** treated as attacks.
+
+### 5. Replay the live feed
+
+```bash
+.venv/Scripts/python.exe scripts/stream_sim.py --out out --events 900
+```
+
+### 6. Run the interface
+
+Two processes. API first:
+
+```bash
+.venv/Scripts/python.exe -m backend.main
+```
+
+Then the UI:
+
+```bash
+npm --prefix frontend run dev
+```
+
+Open **http://localhost:5173**. The Vite dev server proxies `/api` to port
+8000, so no CORS configuration is needed.
+
+### Everything at once
+
+```bash
+.venv/Scripts/python.exe scripts/demo.py
+```
+
+Runs generate → analyse → evaluate → report → stream in sequence and prints
+the figures above.
+
+---
+
+## Environment Variables
+
+**None are required.** The system runs fully with nothing set, including the
+LLM layer, which is disabled by default.
+
+| variable | default | purpose |
+|---|---|---|
+| `MAKAR_DATA_DIR` | `out` | Dataset directory the API serves. |
+| `MAKAR_MANIFEST` | `manifest_suspect.csv` | Manifest file to analyse. |
+| `MAKAR_API_HOST` | `127.0.0.1` | API bind host. |
+| `MAKAR_API_PORT` | `8000` | API bind port. |
+| `MAKAR_LLM_PROVIDER` | `disabled` | `disabled` · `openai` · `anthropic` · `local` |
+| `MAKAR_LLM_MODEL` | *(provider default)* | Model id for the analyst. |
+| `MAKAR_LLM_API_KEY` | — | Required only if a provider is enabled. Without it the provider falls back to `disabled`. |
+| `MAKAR_LLM_BASE_URL` | — | For `local` / OpenAI-compatible endpoints. |
+| `MAKAR__<path>` | — | Override any config value, `__` for nesting: `MAKAR__detection__geospatial__speed_ratio_hard=1.5` |
+| `VITE_API_BASE` | *(empty)* | Frontend only. Point the UI at a non-proxied API origin. |
+
+Copy `.env.example` to `.env` as a starting point. **The LLM is an explanation
+interface only** — it cannot modify the manifest, the verdicts or the chain,
+and every number in this README was produced with it disabled.
+
+---
+
+## What it produces
+
+`scripts/generate.py` writes into `--out`:
+
+| file | contents |
+|---|---|
+| `manifest_suspect.csv` / `.json` | **the system's input** |
+| `manifest_clean.csv` / `.json` | reference only; never read by `core/` |
+| `ground_truth.json` | **private answer key** — only `evaluation/` reads it |
+| `world.json` | ports, vessels, routes, owners, shipments, containers |
+| `route_manifests.json` | per-container route histories |
+| `chain.json` / `node_chains.json` / `nodes.json` | provenance chain and the four nodes |
+| `data/ports.geojson`, `data/routes.geojson` | map layers |
+
+Then `evaluation.json`, `report.md` / `report.json` and
+`stream_evaluation.json` from the three scripts above.
+
+---
+
+## The eight interfaces
+
+| view | what it is for |
+|---|---|
+| **Command Center** | What the manifest *now is* — a disposition, not a score. |
+| **Geo Forensic Map** | Layers, confidence floor, class filters, timeline slider; observed vs reconstructed paths. |
+| **Bloodhound** | Follow evidence through the graph: Expand / Isolate / Conflict / Trace / Timeline, plus shortest evidence path. |
+| **Attack Timeline** | Inferred windows as hypotheses with confidence, and the inferred deletions. |
+| **Record Ledger** | The working queue, filterable by class, disposition, owner, port and probability. |
+| **Record Investigation** | Observation → Evidence → Inference → Decision, with the arithmetic and the blame arbitration shown. |
+| **Reconstruction** | Every candidate the engine generated, with per-criterion scores — not just the winner. |
+| **Provenance Monitor** | Chain ledger, sealed coverage, and the node that diverges while passing its own integrity check. |
+| **Live Feed** | Replay the stream and watch unseen attack patterns get caught. |
+| **Evaluation Console** | The scorecard, including the ablation and the calibration gap. |
+
+---
+
+## How it works
+
+```
+suspect manifest
+  → normalise            typed records + FORMAT evidence (benign, negative weight)
+  → provenance view      majority chain + cross-node consistency
+  → 8 detectors          independent evidence layers, none allowed a verdict
+  → arbitrate            decide who to blame in a contradiction
+  → fuse                 calibrated probability with an auditable breakdown
+  → classify             which kind of tampering, by decision table
+  → reconstruct          candidate original states, scored and selected
+  → attack timeline      group anomalies into windows
+```
+
+Eight detectors, registered by name and enabled from YAML
+(`detection.enabled`): `temporal`, `geospatial`, `route`, `cargo`,
+`duplicate`, `statistical`, `graph`, `provenance`. Forty-nine evidence codes
+across ten reasoning layers. **No detector may classify a record** — they
+observe and emit evidence; only the confidence layer infers and only the
+reconstruction layer decides.
+
+Three ideas carry most of the result:
+
+**Baselines are learned from the manifest with robust statistics.** There is
+no labelled ground truth, so "normal" is estimated from the data — which is
+the same data that was tampered with. Everything uses median/MAD, whose 50%
+breakdown point survives contamination far beyond any plausible attack rate.
+
+**Messiness is exculpatory.** `FORMAT` evidence carries a *negative* fusion
+weight, so a record with a blank cell and a day-first date is scored as *less*
+likely to have been deliberately edited. This is why the noise false-alarm rate
+is zero.
+
+**Symmetric evidence, asymmetric blame.** When two records contradict each
+other, both carry the finding — but only one is usually the lie. A separate
+arbitration pass decides which, using corroboration from independent layers.
+This was found by measurement: with temporal + geospatial detectors alone,
+*every* clean-record false positive was the innocent half of a genuine
+conflict pair. It took false positives from 198 to 2.
+
+---
+
+## Documentation
+
+- **[docs/APPROACH_DOSSIER.md](docs/APPROACH_DOSSIER.md)** — approach and
+  reasoning, alternatives rejected, strengths and weaknesses, scalability, and
+  how the solution changed for the live-feed twist.
+- **[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)** — seventeen
+  decisions with the measurements behind them, including the ones that failed.
+- **[docs/DATA_DICTIONARY.md](docs/DATA_DICTIONARY.md)** — every manifest
+  field, every evidence code, every attack class.
+
+---
+
+## Repository layout
+
+```
+core/            detection, confidence, reconstruction, graph, normalisation
+  detection/     the eight engines + shared context and segmentation
+  confidence/    arbitration, fusion, classifier
+  reconstruction/candidate generation and scoring
+  graph/         cargo intelligence graph and its forensic queries
+blockchain/      block, chain, node, consensus, network
+generator/       world, manifest, corruption, stream + the private log
+evaluation/      metrics and ground-truth scoring (the only reader of the key)
+reporting/       the suspicious activity report
+backend/         FastAPI service
+frontend/        React + TypeScript + Tailwind
+configs/         every tunable threshold in the system
+scripts/         generate · evaluate · report · stream_sim · demo
+tests/           unit and property tests
+```
+
+Nothing under `core/` imports from `generator/` at analysis time. That is what
+makes the reported numbers mean something.
