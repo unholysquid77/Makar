@@ -1,0 +1,831 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            114.1694,
+            22.3193
+          ],
+          [
+            103.82,
+            1.2644
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            54.0924,
+            17.0151
+          ],
+          [
+            55.0617,
+            25.0107
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_01",
+        "port_sequence": [
+          "PORT_HKG",
+          "PORT_SIN",
+          "PORT_COL",
+          "PORT_SAL",
+          "PORT_DXB"
+        ],
+        "vessel_id": "VESSEL_15"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            121.4737,
+            31.2304
+          ],
+          [
+            114.1694,
+            22.3193
+          ],
+          [
+            106.6881,
+            20.8449
+          ],
+          [
+            100.8833,
+            13.0827
+          ],
+          [
+            103.82,
+            1.2644
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_02",
+        "port_sequence": [
+          "PORT_SHA",
+          "PORT_HKG",
+          "PORT_HPH",
+          "PORT_BKK",
+          "PORT_SIN"
+        ],
+        "vessel_id": "VESSEL_18"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            72.9525,
+            18.949
+          ],
+          [
+            72.8777,
+            19.076
+          ],
+          [
+            67.0011,
+            24.8607
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_03",
+        "port_sequence": [
+          "PORT_NSA",
+          "PORT_MUM",
+          "PORT_KHI"
+        ],
+        "vessel_id": "VESSEL_11"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            72.8777,
+            19.076
+          ],
+          [
+            55.0617,
+            25.0107
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_04",
+        "port_sequence": [
+          "PORT_COL",
+          "PORT_MUM",
+          "PORT_DXB"
+        ],
+        "vessel_id": "VESSEL_21"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            39.1925,
+            21.4858
+          ],
+          [
+            54.0924,
+            17.0151
+          ],
+          [
+            69.7219,
+            22.8394
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_05",
+        "port_sequence": [
+          "PORT_JEA",
+          "PORT_SAL",
+          "PORT_MUN"
+        ],
+        "vessel_id": "VESSEL_06"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            72.9525,
+            18.949
+          ],
+          [
+            72.8777,
+            19.076
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            101.4,
+            3.0
+          ],
+          [
+            103.82,
+            1.2644
+          ],
+          [
+            103.55,
+            1.3667
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_06",
+        "port_sequence": [
+          "PORT_NSA",
+          "PORT_MUM",
+          "PORT_COL",
+          "PORT_PKL",
+          "PORT_SIN",
+          "PORT_TPP"
+        ],
+        "vessel_id": "VESSEL_04"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            91.7832,
+            22.3569
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            103.82,
+            1.2644
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_07",
+        "port_sequence": [
+          "PORT_CTG",
+          "PORT_COL",
+          "PORT_SIN"
+        ],
+        "vessel_id": "VESSEL_02"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            55.0617,
+            25.0107
+          ],
+          [
+            54.0924,
+            17.0151
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            103.82,
+            1.2644
+          ],
+          [
+            114.1694,
+            22.3193
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_08",
+        "port_sequence": [
+          "PORT_DXB",
+          "PORT_SAL",
+          "PORT_COL",
+          "PORT_SIN",
+          "PORT_HKG"
+        ],
+        "vessel_id": "VESSEL_16"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            106.88,
+            -6.1045
+          ],
+          [
+            103.55,
+            1.3667
+          ],
+          [
+            103.82,
+            1.2644
+          ],
+          [
+            101.4,
+            3.0
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            72.8777,
+            19.076
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_09",
+        "port_sequence": [
+          "PORT_JKT",
+          "PORT_TPP",
+          "PORT_SIN",
+          "PORT_PKL",
+          "PORT_COL",
+          "PORT_MUM"
+        ],
+        "vessel_id": "VESSEL_14"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            103.82,
+            1.2644
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            91.7832,
+            22.3569
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_10",
+        "port_sequence": [
+          "PORT_SIN",
+          "PORT_COL",
+          "PORT_CTG"
+        ],
+        "vessel_id": "VESSEL_16"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            72.8777,
+            19.076
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            101.4,
+            3.0
+          ],
+          [
+            103.82,
+            1.2644
+          ],
+          [
+            103.55,
+            1.3667
+          ],
+          [
+            106.88,
+            -6.1045
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_11",
+        "port_sequence": [
+          "PORT_MUM",
+          "PORT_COL",
+          "PORT_PKL",
+          "PORT_SIN",
+          "PORT_TPP",
+          "PORT_JKT"
+        ],
+        "vessel_id": "VESSEL_14"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            69.7219,
+            22.8394
+          ],
+          [
+            72.9525,
+            18.949
+          ],
+          [
+            72.8777,
+            19.076
+          ],
+          [
+            67.0011,
+            24.8607
+          ],
+          [
+            55.0617,
+            25.0107
+          ],
+          [
+            54.3773,
+            24.4539
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_12",
+        "port_sequence": [
+          "PORT_MUN",
+          "PORT_NSA",
+          "PORT_MUM",
+          "PORT_KHI",
+          "PORT_DXB",
+          "PORT_AUH"
+        ],
+        "vessel_id": "VESSEL_26"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            114.1694,
+            22.3193
+          ],
+          [
+            106.6881,
+            20.8449
+          ],
+          [
+            100.8833,
+            13.0827
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_13",
+        "port_sequence": [
+          "PORT_HKG",
+          "PORT_HPH",
+          "PORT_BKK"
+        ],
+        "vessel_id": "VESSEL_25"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            55.0617,
+            25.0107
+          ],
+          [
+            67.0011,
+            24.8607
+          ],
+          [
+            72.8777,
+            19.076
+          ],
+          [
+            72.9525,
+            18.949
+          ],
+          [
+            69.7219,
+            22.8394
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_14",
+        "port_sequence": [
+          "PORT_DXB",
+          "PORT_KHI",
+          "PORT_MUM",
+          "PORT_NSA",
+          "PORT_MUN"
+        ],
+        "vessel_id": "VESSEL_18"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            106.88,
+            -6.1045
+          ],
+          [
+            103.55,
+            1.3667
+          ],
+          [
+            103.82,
+            1.2644
+          ],
+          [
+            101.4,
+            3.0
+          ],
+          [
+            79.8612,
+            6.9271
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_15",
+        "port_sequence": [
+          "PORT_JKT",
+          "PORT_TPP",
+          "PORT_SIN",
+          "PORT_PKL",
+          "PORT_COL"
+        ],
+        "vessel_id": "VESSEL_09"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            67.0011,
+            24.8607
+          ],
+          [
+            55.0617,
+            25.0107
+          ],
+          [
+            54.3773,
+            24.4539
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_16",
+        "port_sequence": [
+          "PORT_KHI",
+          "PORT_DXB",
+          "PORT_AUH"
+        ],
+        "vessel_id": "VESSEL_23"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            101.4,
+            3.0
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            72.8777,
+            19.076
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_17",
+        "port_sequence": [
+          "PORT_PKL",
+          "PORT_COL",
+          "PORT_MUM"
+        ],
+        "vessel_id": "VESSEL_10"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            39.1925,
+            21.4858
+          ],
+          [
+            54.0924,
+            17.0151
+          ],
+          [
+            69.7219,
+            22.8394
+          ],
+          [
+            72.8777,
+            19.076
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_18",
+        "port_sequence": [
+          "PORT_JEA",
+          "PORT_SAL",
+          "PORT_MUN",
+          "PORT_MUM"
+        ],
+        "vessel_id": "VESSEL_12"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            106.6881,
+            20.8449
+          ],
+          [
+            114.1694,
+            22.3193
+          ],
+          [
+            121.4737,
+            31.2304
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_19",
+        "port_sequence": [
+          "PORT_HPH",
+          "PORT_HKG",
+          "PORT_SHA"
+        ],
+        "vessel_id": "VESSEL_06"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            103.82,
+            1.2644
+          ],
+          [
+            101.4,
+            3.0
+          ],
+          [
+            79.8612,
+            6.9271
+          ],
+          [
+            72.8777,
+            19.076
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_20",
+        "port_sequence": [
+          "PORT_SIN",
+          "PORT_PKL",
+          "PORT_COL",
+          "PORT_MUM"
+        ],
+        "vessel_id": "VESSEL_08"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            55.0617,
+            25.0107
+          ],
+          [
+            72.8777,
+            19.076
+          ],
+          [
+            79.8612,
+            6.9271
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_21",
+        "port_sequence": [
+          "PORT_DXB",
+          "PORT_MUM",
+          "PORT_COL"
+        ],
+        "vessel_id": "VESSEL_13"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            121.4737,
+            31.2304
+          ],
+          [
+            114.1694,
+            22.3193
+          ],
+          [
+            106.6881,
+            20.8449
+          ],
+          [
+            100.8833,
+            13.0827
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_22",
+        "port_sequence": [
+          "PORT_SHA",
+          "PORT_HKG",
+          "PORT_HPH",
+          "PORT_BKK"
+        ],
+        "vessel_id": "VESSEL_05"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            55.0617,
+            25.0107
+          ],
+          [
+            67.0011,
+            24.8607
+          ],
+          [
+            72.8777,
+            19.076
+          ],
+          [
+            72.9525,
+            18.949
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_23",
+        "port_sequence": [
+          "PORT_DXB",
+          "PORT_KHI",
+          "PORT_MUM",
+          "PORT_NSA"
+        ],
+        "vessel_id": "VESSEL_18"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            55.0617,
+            25.0107
+          ],
+          [
+            54.0924,
+            17.0151
+          ],
+          [
+            79.8612,
+            6.9271
+          ]
+        ]
+      },
+      "properties": {
+        "route_id": "ROUTE_24",
+        "port_sequence": [
+          "PORT_DXB",
+          "PORT_SAL",
+          "PORT_COL"
+        ],
+        "vessel_id": "VESSEL_24"
+      }
+    }
+  ]
+}

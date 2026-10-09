@@ -1,0 +1,293 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          121.4737,
+          31.2304
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_SHA",
+        "name": "Shanghai",
+        "country": "China",
+        "capacity_teu": 47300000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          103.82,
+          1.2644
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_SIN",
+        "name": "Singapore",
+        "country": "Singapore",
+        "capacity_teu": 37200000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          114.1694,
+          22.3193
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_HKG",
+        "name": "Hong Kong",
+        "country": "Hong Kong",
+        "capacity_teu": 17300000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          55.0617,
+          25.0107
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_DXB",
+        "name": "Jebel Ali",
+        "country": "UAE",
+        "capacity_teu": 14100000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          101.4,
+          3.0
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_PKL",
+        "name": "Port Klang",
+        "country": "Malaysia",
+        "capacity_teu": 13200000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          103.55,
+          1.3667
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_TPP",
+        "name": "Tanjung Pelepas",
+        "country": "Malaysia",
+        "capacity_teu": 10500000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          100.8833,
+          13.0827
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_BKK",
+        "name": "Laem Chabang",
+        "country": "Thailand",
+        "capacity_teu": 8700000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.88,
+          -6.1045
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_JKT",
+        "name": "Tanjung Priok",
+        "country": "Indonesia",
+        "capacity_teu": 7800000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          79.8612,
+          6.9271
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_COL",
+        "name": "Colombo",
+        "country": "Sri Lanka",
+        "capacity_teu": 7200000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          69.7219,
+          22.8394
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_MUN",
+        "name": "Mundra",
+        "country": "India",
+        "capacity_teu": 6500000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          72.9525,
+          18.949
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_NSA",
+        "name": "Nhava Sheva",
+        "country": "India",
+        "capacity_teu": 6400000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.6881,
+          20.8449
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_HPH",
+        "name": "Haiphong",
+        "country": "Vietnam",
+        "capacity_teu": 5900000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          72.8777,
+          19.076
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_MUM",
+        "name": "Mumbai",
+        "country": "India",
+        "capacity_teu": 5100000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          39.1925,
+          21.4858
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_JEA",
+        "name": "Jeddah",
+        "country": "Saudi Arabia",
+        "capacity_teu": 4800000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          54.0924,
+          17.0151
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_SAL",
+        "name": "Salalah",
+        "country": "Oman",
+        "capacity_teu": 4300000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          91.7832,
+          22.3569
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_CTG",
+        "name": "Chittagong",
+        "country": "Bangladesh",
+        "capacity_teu": 3200000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          54.3773,
+          24.4539
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_AUH",
+        "name": "Khalifa",
+        "country": "UAE",
+        "capacity_teu": 3000000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          67.0011,
+          24.8607
+        ]
+      },
+      "properties": {
+        "port_id": "PORT_KHI",
+        "name": "Karachi",
+        "country": "Pakistan",
+        "capacity_teu": 2100000
+      }
+    }
+  ]
+}
