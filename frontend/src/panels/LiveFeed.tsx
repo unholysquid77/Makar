@@ -32,7 +32,13 @@ import {
 } from "../components/primitives";
 import { api } from "../lib/api";
 import { TAMPER_COLOUR, num, pct, severityColour, ts } from "../lib/format";
-import type { StreamStartResponse, StreamVerdictPayload } from "../lib/types";
+import type {
+  AlertStats,
+  LiveAlert,
+  LiveSummary,
+  StreamStartResponse,
+  StreamVerdictPayload,
+} from "../lib/types";
 
 interface FeedRow extends StreamVerdictPayload {
   truth: string | null;
@@ -91,6 +97,9 @@ export function LiveFeed() {
   // collateral. Measured against the CLI scorer, that turned 0 false alarms
   // into 27.
   const [tally, setTally] = useState<Tally>(emptyTally);
+  const [alerts, setAlerts] = useState<LiveAlert[]>([]);
+  const [alertStats, setAlertStats] = useState<AlertStats | null>(null);
+  const [liveSummary, setLiveSummary] = useState<LiveSummary | null>(null);
 
   // Refs so the replay loop reads live values without being re-created.
   const runningRef = useRef(false);
@@ -98,11 +107,28 @@ export function LiveFeed() {
   const delayRef = useRef(delay);
   delayRef.current = delay;
 
+  const refreshLiveViews = useCallback(async () => {
+    try {
+      const [alertPayload, manifest] = await Promise.all([
+        api.streamAlerts(),
+        api.streamManifest(1),
+      ]);
+      setAlerts(alertPayload.open);
+      setAlertStats(alertPayload.stats);
+      setLiveSummary(manifest.summary);
+    } catch {
+      /* a view refresh must never interrupt the replay */
+    }
+  }, []);
+
   const start = useCallback(async () => {
     setBusy(true);
     setError(null);
     setRows([]);
     setTally(emptyTally());
+    setAlerts([]);
+    setAlertStats(null);
+    setLiveSummary(null);
     setCursor(0);
     cursorRef.current = 0;
     try {
@@ -173,6 +199,14 @@ export function LiveFeed() {
     }
     cursorRef.current = index + 1;
     setCursor(index + 1);
+
+    // The alert set and the live manifest are whole-session views, so
+    // they are refreshed every 20 events rather than on every one --
+    // polling them per event would dominate the latency we are
+    // measuring.
+    if ((index + 1) % 20 === 0 || index + 1 === session.queued_events.length) {
+      void refreshLiveViews();
+    }
     return true;
   }, [session]);
 
@@ -408,6 +442,138 @@ export function LiveFeed() {
         </>
       )}
 
+
+      {/* ---------------------------------------------- the twist */}
+      {session && liveSummary && (
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-3">
+          <Panel title="Live reconstructed manifest">
+            <p className="text-2xs text-ink-700 leading-relaxed mb-2.5">
+              Maintained in place as records arrive, not rebuilt. Every record
+              carries exactly one disposition, exactly as the batch output does.
+            </p>
+            <div className="grid grid-cols-4 gap-2">
+              {(
+                [
+                  ["ORIGINAL", "#394353"],
+                  ["REPAIRED", "#4cc2ff"],
+                  ["REMOVED", "#e5563d"],
+                  ["UNRECOVERABLE", "#d9a21b"],
+                ] as Array<[keyof LiveSummary["disposition"], string]>
+              ).map(([label, colour]) => (
+                <div key={label} className="rounded-xs border border-hairline px-2 py-2">
+                  <div className="font-mono tnum text-lg" style={{ color: colour }}>
+                    {num(liveSummary.disposition[label])}
+                  </div>
+                  <div className="text-[0.625rem] uppercase tracking-[0.1em] text-ink-500 mt-0.5">
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1.5">
+              {(
+                [
+                  ["Records revised on the feed", num(liveSummary.records_revised)],
+                  ["Revisions seen", num(liveSummary.revisions_seen)],
+                  ["Corrections accepted silently", num(liveSummary.corrections_accepted)],
+                  ["Mean repair confidence", pct(liveSummary.mean_repair_confidence, 0)],
+                ] as Array<[string, string]>
+              ).map(([label, value]) => (
+                <div key={label} className="flex items-baseline justify-between gap-2">
+                  <span className="text-2xs text-ink-500">{label}</span>
+                  <span className="font-mono tnum text-xs text-ink-100">{value}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel title="Operator load">
+            <p className="text-2xs text-ink-700 leading-relaxed mb-2.5">
+              Findings are folded into one open alert per entity. A campaign
+              spanning forty events is one problem to action, not forty
+              notifications to triage.
+            </p>
+            {alertStats && (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  <Metric label="Findings" value={num(alertStats.flagged_events)} />
+                  <Metric
+                    label="Notifications"
+                    value={num(alertStats.notifications)}
+                    accent="#4cc2ff"
+                  />
+                  <Metric
+                    label="Folded in"
+                    value={num(alertStats.suppressed)}
+                    accent="#2fa36b"
+                  />
+                </div>
+                <div className="mt-2">
+                  <div className="flex items-baseline justify-between text-2xs">
+                    <span className="text-ink-500 uppercase tracking-[0.1em]">
+                      Findings per notification
+                    </span>
+                    <span className="font-mono tnum text-ink-100">
+                      {alertStats.compression_ratio.toFixed(2)}×
+                    </span>
+                  </div>
+                  <DatumLine
+                    value={Math.min(1, (alertStats.compression_ratio - 1) / 2)}
+                    colour="#2fa36b"
+                    className="mt-1.5"
+                  />
+                </div>
+              </>
+            )}
+            {alerts.length > 0 && (
+              <ul className="mt-3 space-y-1.5 max-h-56 overflow-y-auto">
+                {alerts.slice(0, 12).map((alert) => (
+                  <li
+                    key={alert.alert_id}
+                    className="rounded-xs border border-hairline bg-obsidian-850 px-2.5 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <Badge
+                          colour={
+                            alert.status === "CRITICAL"
+                              ? "#e5484d"
+                              : alert.status === "ESCALATED"
+                                ? "#e8821f"
+                                : "#4cc2ff"
+                          }
+                        >
+                          {alert.status}
+                        </Badge>
+                        <span className="font-mono text-2xs text-ink-300 truncate">
+                          {alert.key.split(":")[1]}
+                        </span>
+                      </span>
+                      <span
+                        className="font-mono tnum text-2xs shrink-0"
+                        style={{ color: severityColour(alert.peak_probability) }}
+                      >
+                        {pct(alert.peak_probability, 0)}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-2xs text-ink-500">
+                      {alert.event_count} event(s)
+                      {alert.suppressed_count > 0 && (
+                        <span className="text-verified">
+                          {" "}
+                          · {alert.suppressed_count} folded in
+                        </span>
+                      )}{" "}
+                      · {alert.evidence_layers.join(", ")}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </div>
+      )}
+
       {/* ---------------------------------------------- the feed */}
       {session && (
         <Panel title={`Event feed — newest first`} dense>
@@ -424,6 +590,7 @@ export function LiveFeed() {
                     <th>Record</th>
                     <th>Probability</th>
                     <th>Class</th>
+                    <th>Kind</th>
                     <th>Ground truth</th>
                     <th>Container</th>
                     <th>Port</th>
@@ -452,6 +619,13 @@ export function LiveFeed() {
                         </td>
                         <td>
                           <TamperBadge value={row.tamper_class} />
+                        </td>
+                        <td>
+                          {row.is_revision ? (
+                            <Badge colour="#7c8cff">revision</Badge>
+                          ) : (
+                            <span className="text-2xs text-ink-700">new</span>
+                          )}
                         </td>
                         <td>
                           {row.truth ? (

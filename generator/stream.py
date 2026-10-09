@@ -48,7 +48,13 @@ from generator.corruption import record_to_row
 
 #: Attack names this module can produce. Referenced by
 #: ``stream.novel_attack_patterns`` in config.
-NOVEL_PATTERNS: tuple[str, ...] = ("weight_siphon", "ghost_transfer", "identity_swap")
+NOVEL_PATTERNS: tuple[str, ...] = (
+    "weight_siphon",
+    "ghost_transfer",
+    "identity_swap",
+    # The twist proper: the attacker editing records already delivered.
+    "live_revision",
+)
 
 
 class StreamEvent(BaseModel):
@@ -554,6 +560,15 @@ def build_stream(
             )
         )
 
+    events = _inject_revisions(
+        rng,
+        world,
+        events,
+        summary,
+        malicious_rate=cfg.float_("stream.live_revision_rate", 0.05),
+        correction_rate=cfg.float_("stream.correction_rate", 0.04),
+    )
+
     summary["total"] = len(events)
     summary["legitimate"] = len(events) - sum(
         v for k, v in summary.items() if k in NOVEL_PATTERNS
@@ -569,3 +584,200 @@ def build_stream(
 
 def iter_stream(plan: StreamPlan) -> Iterator[StreamEvent]:
     yield from plan.events
+
+
+# ======================================================================
+# Live revisions (the Shifting Waters twist)
+# ======================================================================
+#
+# The feed carries updates to records already delivered. Two kinds, and
+# telling them apart is the whole test:
+#
+#   correction      an operator supplies a value that was missing or wrong.
+#                   Moves the record TOWARD consistency. Must not alert.
+#   live_revision   the attacker edits a record after the fact. Moves it AWAY
+#                   from consistency. Must alert.
+#
+# Nothing marks them as different in the payload -- both are simply a row
+# arriving under a record_id already seen. The detector has to work it out.
+
+#: Fields an operator plausibly corrects after the fact.
+_CORRECTABLE: tuple[str, ...] = ("declared_value", "departure_timestamp")
+
+
+def _inject_revisions(
+    rng: random.Random,
+    world: World,
+    events: list[StreamEvent],
+    summary: dict[str, int],
+    *,
+    malicious_rate: float,
+    correction_rate: float,
+) -> list[StreamEvent]:
+    """Insert revision events for records already on the feed.
+
+    A revision is appended *after* the event it revises, carrying the same
+    record_id, so the processor meets the original first and the update
+    second -- exactly as a live operator console would.
+    """
+    if not events:
+        return events
+
+    # Only revise records that are not themselves already an attack, so the
+    # revision's effect is measured against a clean baseline.
+    candidates = [
+        (index, event)
+        for index, event in enumerate(events)
+        if not event.truth.get("attack") and event.row.get("record_id")
+    ]
+    if not candidates:
+        return events
+
+    rng.shuffle(candidates)
+    n_malicious = int(len(events) * malicious_rate)
+    n_corrections = int(len(events) * correction_rate)
+
+    revisions: list[tuple[int, StreamEvent]] = []
+    used: set[str] = set()
+
+    # --- the attacker, editing in place ---
+    for index, event in candidates[:n_malicious]:
+        record_id = event.row["record_id"]
+        if record_id in used:
+            continue
+        used.add(record_id)
+        row = dict(event.row)
+        field, before, after, note = _malicious_edit(rng, world, row)
+        if field is None:
+            continue
+        row[field] = after
+        # The edit happens some time after the original was reported.
+        when = _shift_iso(row.get("timestamp", ""), hours=rng.uniform(1.0, 20.0))
+        revisions.append(
+            (
+                index + rng.randint(4, 40),
+                StreamEvent(
+                    sequence=0,
+                    emitted_at=event.emitted_at,
+                    row=row,
+                    truth={
+                        "attack": "live_revision",
+                        "attack_class": str(AttackClass.MODIFIED),
+                        "container_id": row.get("container_id"),
+                        "revises": record_id,
+                        "note": (
+                            f"attacker edited {field} after the fact: "
+                            f"{before!r} -> {after!r} ({note})"
+                        ),
+                    },
+                ),
+            )
+        )
+        _ = when
+
+    # --- the operator, correcting an omission ---
+    for index, event in candidates[n_malicious : n_malicious + n_corrections]:
+        record_id = event.row["record_id"]
+        if record_id in used:
+            continue
+        used.add(record_id)
+
+        # The original went out with a value missing; the correction supplies
+        # it. That is the common real case -- a late-arriving field -- and it
+        # moves the record toward consistency, which is what the detector has
+        # to notice.
+        field = rng.choice(_CORRECTABLE)
+        original_value = event.row.get(field, "")
+        if not original_value:
+            continue
+        event.row[field] = ""  # the first delivery was incomplete
+
+        corrected = dict(event.row)
+        corrected[field] = original_value
+        revisions.append(
+            (
+                index + rng.randint(3, 25),
+                StreamEvent(
+                    sequence=0,
+                    emitted_at=event.emitted_at,
+                    row=corrected,
+                    truth={
+                        "correction": True,
+                        "revises": record_id,
+                        "note": f"operator supplied the missing {field}",
+                    },
+                ),
+            )
+        )
+
+    if not revisions:
+        return events
+
+    # Splice them in at their scheduled positions.
+    merged: list[StreamEvent] = []
+    pending: dict[int, list[StreamEvent]] = {}
+    for position, event in revisions:
+        pending.setdefault(position, []).append(event)
+
+    for index, event in enumerate(events):
+        merged.append(event)
+        for queued in pending.pop(index, []):
+            merged.append(queued)
+    for leftover in pending.values():
+        merged.extend(leftover)
+
+    for sequence, event in enumerate(merged, start=1):
+        event.sequence = sequence
+
+    summary["live_revision"] = sum(
+        1 for e in merged if e.truth.get("attack") == "live_revision"
+    )
+    summary["correction"] = sum(1 for e in merged if e.truth.get("correction"))
+    return merged
+
+
+def _malicious_edit(
+    rng: random.Random, world: World, row: dict[str, Any]
+) -> tuple[str | None, Any, Any, str]:
+    """One after-the-fact edit, of the kind that moves money."""
+    choice = rng.choice(["weight", "declared_value", "owner", "destination"])
+
+    if choice in ("weight", "declared_value"):
+        try:
+            value = float(row.get(choice, "") or 0)
+        except ValueError:
+            return None, None, None, ""
+        if value <= 0:
+            return None, None, None, ""
+        factor = rng.uniform(2.2, 5.5) if rng.random() < 0.6 else rng.uniform(0.18, 0.45)
+        return choice, row[choice], f"{value * factor:.2f}", (
+            "inflated" if factor > 1 else "deflated"
+        )
+
+    if choice == "owner":
+        others = [o.name for o in world.owners.values() if o.name != row.get("owner")]
+        if not others:
+            return None, None, None, ""
+        return "owner", row.get("owner"), rng.choice(others), "ownership reassigned"
+
+    route = world.routes.get(row.get("route_id", ""))
+    on_route = set(route.port_sequence) if route else set()
+    off_route = [p for pid, p in world.ports.items() if pid not in on_route]
+    if not off_route:
+        return None, None, None, ""
+    return (
+        "destination",
+        row.get("destination"),
+        rng.choice(off_route).name,
+        "destination rewritten off-route",
+    )
+
+
+def _shift_iso(text: str, *, hours: float) -> str:
+    if not text:
+        return text
+    try:
+        base = datetime.fromisoformat(text.replace("Z", ""))
+    except ValueError:
+        return text
+    return (base + timedelta(hours=hours)).replace(microsecond=0).isoformat() + "Z"

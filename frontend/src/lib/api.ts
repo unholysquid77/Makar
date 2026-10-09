@@ -9,6 +9,8 @@
 
 import type {
   BlockchainResponse,
+  StreamAlertsResponse,
+  StreamManifestResponse,
   EvaluationArtifacts,
   GeoJSONFeatureCollection,
   GraphResponse,
@@ -164,6 +166,18 @@ export const api = {
 
   streamStatus: (limit = 50) =>
     request<StreamStatusResponse>(`/api/stream/status${qs({ limit })}`),
+
+
+  /** Open alerts and the flooding-control numbers (live session only). */
+  streamAlerts: () => request<StreamAlertsResponse>("/api/stream/alerts"),
+
+  /** The reconstructed manifest, current as of the last live event. */
+  streamManifest: (limit = 200) =>
+    request<StreamManifestResponse>(`/api/stream/manifest${qs({ limit })}`),
+
+  /** The suspicious activity report, current as of the last live event. */
+  streamReport: (top = 20) =>
+    request<Record<string, unknown>>(`/api/stream/report${qs({ top })}`),
 
   explain: (recordId: string, question?: string) =>
     request<LlmExplainResponse>("/api/llm/explain", {

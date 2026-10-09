@@ -115,6 +115,11 @@ class EvidenceCode(StrEnum):
     EVENT_ORDER_VIOLATION = "EVENT_ORDER_VIOLATION"
     TIMESTAMP_MISSING = "TIMESTAMP_MISSING"
     SEQUENCE_GAP = "SEQUENCE_GAP"
+    # --- live revisions (the Shifting Waters twist) ---
+    RECORD_REVISED = "RECORD_REVISED"
+    REVISION_DEGRADES_CONSISTENCY = "REVISION_DEGRADES_CONSISTENCY"
+    REVISION_ALTERS_REPORTED_VALUE = "REVISION_ALTERS_REPORTED_VALUE"
+    REVISION_CONTRADICTS_CHAIN = "REVISION_CONTRADICTS_CHAIN"
 
     # --- SPATIAL (spec 10) ---
     SPEED_INFEASIBLE = "SPEED_INFEASIBLE"
@@ -187,6 +192,10 @@ EVIDENCE_CODE_TYPE: dict[str, str] = {
     EvidenceCode.EVENT_ORDER_VIOLATION: EvidenceType.TEMPORAL,
     EvidenceCode.TIMESTAMP_MISSING: EvidenceType.TEMPORAL,
     EvidenceCode.SEQUENCE_GAP: EvidenceType.TEMPORAL,
+    EvidenceCode.RECORD_REVISED: EvidenceType.FORMAT,
+    EvidenceCode.REVISION_DEGRADES_CONSISTENCY: EvidenceType.GRAPH,
+    EvidenceCode.REVISION_ALTERS_REPORTED_VALUE: EvidenceType.GRAPH,
+    EvidenceCode.REVISION_CONTRADICTS_CHAIN: EvidenceType.BLOCKCHAIN,
     EvidenceCode.SPEED_INFEASIBLE: EvidenceType.SPATIAL,
     EvidenceCode.COORDINATE_PORT_MISMATCH: EvidenceType.SPATIAL,
     EvidenceCode.COORDINATE_OUT_OF_RANGE: EvidenceType.SPATIAL,
@@ -240,6 +249,10 @@ EVIDENCE_LABEL: dict[str, str] = {
     EvidenceCode.EVENT_ORDER_VIOLATION: "Event out of lifecycle order",
     EvidenceCode.TIMESTAMP_MISSING: "Timestamp absent or unparseable",
     EvidenceCode.SEQUENCE_GAP: "Gap in an otherwise coherent event sequence",
+    EvidenceCode.RECORD_REVISED: "Record revised after it was first reported",
+    EvidenceCode.REVISION_DEGRADES_CONSISTENCY: "Revision moved the record away from consistency",
+    EvidenceCode.REVISION_ALTERS_REPORTED_VALUE: "Already-reported value rewritten after the event",
+    EvidenceCode.REVISION_CONTRADICTS_CHAIN: "Revision diverges from the committed hash",
     EvidenceCode.SPEED_INFEASIBLE: "Impossible route transition",
     EvidenceCode.COORDINATE_PORT_MISMATCH: "Coordinates do not match declared port",
     EvidenceCode.COORDINATE_OUT_OF_RANGE: "Coordinates outside valid range",

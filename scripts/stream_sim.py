@@ -217,6 +217,75 @@ def main(
         )
     console.print(table)
 
+
+    # --- the twist: live revisions and alert flooding -------------------
+    revisions = [e for e in plan.events if e.truth.get("attack") == "live_revision"]
+    corrections = [e for e in plan.events if e.truth.get("correction")]
+    revision_hits = len({e.sequence for e in revisions} & flagged)
+    correction_hits = len({e.sequence for e in corrections} & flagged)
+
+    if revisions or corrections:
+        table = Table(
+            title="Live record revisions — the attacker editing in real time",
+            header_style="bold magenta",
+        )
+        table.add_column("Kind")
+        table.add_column("Events", justify="right")
+        table.add_column("Alerted", justify="right")
+        table.add_column("Outcome", justify="right")
+        table.add_row(
+            "attacker edits an already-reported value",
+            str(len(revisions)),
+            str(revision_hits),
+            f"{revision_hits / max(1, len(revisions)):.0%} caught",
+        )
+        table.add_row(
+            "operator corrects a missing value",
+            str(len(corrections)),
+            str(correction_hits),
+            f"{correction_hits / max(1, len(corrections)):.0%} false alarms",
+        )
+        console.print(table)
+
+    stats = processor.stats()
+    alerts = stats.get("alerts", {})
+    table = Table(
+        title="Operator load — alerts raised, not events flagged",
+        header_style="bold magenta",
+    )
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+    for name, value in (
+        ("findings above the alert threshold", alerts.get("flagged_events", 0)),
+        ("operator notifications", alerts.get("notifications", 0)),
+        ("folded into an existing alert", alerts.get("suppressed", 0)),
+        ("open alerts", alerts.get("open_alerts", 0)),
+        ("findings per notification", alerts.get("compression_ratio", 0)),
+        ("suppression rate", f"{alerts.get('suppression_rate', 0):.0%}"),
+    ):
+        table.add_row(name, str(value))
+    console.print(table)
+
+    summary = processor.live_summary()
+    table = Table(
+        title="Live reconstructed manifest — current as of the last event",
+        header_style="bold magenta",
+    )
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+    for name, value in (
+        ("records in the manifest", summary["total_records"]),
+        ("ORIGINAL", summary["disposition"]["ORIGINAL"]),
+        ("REPAIRED", summary["disposition"]["REPAIRED"]),
+        ("REMOVED", summary["disposition"]["REMOVED"]),
+        ("UNRECOVERABLE", summary["disposition"]["UNRECOVERABLE"]),
+        ("revisions seen", summary["revisions_seen"]),
+        ("corrections accepted silently", summary["corrections_accepted"]),
+        ("mean repair confidence", f"{summary['mean_repair_confidence']:.1%}"),
+    ):
+        table.add_row(name, str(value))
+    console.print(table)
+
     stats = processor.stats()
     table = Table(title="Incremental throughput", header_style="bold magenta")
     table.add_column("Metric")
@@ -289,6 +358,14 @@ def main(
                 for pattern, sequences in sorted(per_pattern.items())
             },
             "throughput": stats,
+            "revisions": {
+                "malicious": len(revisions),
+                "malicious_caught": revision_hits,
+                "corrections": len(corrections),
+                "corrections_alerted": correction_hits,
+            },
+            "alerts": alerts,
+            "live_manifest": summary,
             "evidence_codes": dict(codes),
             "detections": detections,
         }

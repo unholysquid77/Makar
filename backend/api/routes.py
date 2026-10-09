@@ -643,6 +643,50 @@ def stream_status(limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
     return {"active": True, **processor.stats(), "recent": store.stream_log(limit)}
 
 
+@router.get("/stream/manifest")
+def stream_manifest(limit: int = Query(200, ge=1, le=10000)) -> dict[str, Any]:
+    """The reconstructed manifest, current as of the last live event.
+
+    The twist requires this to stay up to date as records arrive rather than
+    being rebuilt on demand, so the processor revises dispositions in place
+    and this is a read of that state.
+    """
+    processor = store.stream
+    if processor is None:
+        raise HTTPException(status_code=409, detail="no live session; POST /api/stream/start first")
+    return {
+        "summary": processor.live_summary(),
+        "records": processor.live_manifest(limit=limit),
+    }
+
+
+@router.get("/stream/report")
+def stream_report(top: int = Query(20, ge=1, le=200)) -> dict[str, Any]:
+    """The suspicious activity report, current as of the last live event."""
+    processor = store.stream
+    if processor is None:
+        raise HTTPException(status_code=409, detail="no live session; POST /api/stream/start first")
+    return processor.live_report(top=top)
+
+
+@router.get("/stream/alerts")
+def stream_alerts() -> dict[str, Any]:
+    """Open alerts and the flooding-control numbers.
+
+    Alerts are grouped per entity, so a campaign spanning forty events is one
+    alert that updates, not forty notifications.
+    """
+    processor = store.stream
+    if processor is None:
+        return {"active": False, "open": [], "stats": {}}
+    return {
+        "active": True,
+        "open": [alert.as_dict() for alert in processor.alerts.open_alerts()],
+        "closed": len(processor.alerts.closed),
+        "stats": processor.alerts.stats(),
+    }
+
+
 # ======================================================================
 # Evaluation artifacts (spec 31)
 # ======================================================================

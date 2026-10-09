@@ -32,12 +32,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from core.alerting import AlertManager, AlertOutcome
 from core.confidence.arbitration import arbitrate
 from core.confidence.classifier import classify
 from core.confidence.fusion import fuse
 from core.config import MakarConfig
-from core.detection.base import DETECTOR_REGISTRY, build_context
+from core.detection.base import DETECTOR_REGISTRY, AnalysisContext, build_context
 from core.models import (
+    HASHED_FIELDS,
     Evidence,
     ManifestRecord,
     Reconstruction,
@@ -52,6 +54,26 @@ from core.types import EVIDENCE_CODE_TYPE, EvidenceCode, EvidenceType, TamperCla
 
 #: Engines that reason over one container's history and can therefore run on
 #: a scoped context.
+#: Fields whose after-the-fact alteration materially changes what the manifest
+#: asserts -- what was carried, by whom, to where, worth how much. Rewriting
+#: one of these after the event is the shape the twist describes.
+_MATERIAL_FIELDS: frozenset[str] = frozenset(
+    {
+        "weight",
+        "declared_value",
+        "container_count",
+        "owner",
+        "cargo_type",
+        "origin",
+        "destination",
+        "current_location",
+        "port_id",
+        "timestamp",
+        "arrival_timestamp",
+        "event_type",
+    }
+)
+
 _SCOPED_ENGINES: tuple[str, ...] = ("temporal", "geospatial", "route", "cargo", "graph")
 
 
@@ -65,6 +87,13 @@ class StreamVerdict:
     evidence: list[Evidence] = field(default_factory=list)
     reconstruction: Reconstruction | None = None
     latency_ms: float = 0.0
+    #: True when this event revised a record already on the feed.
+    is_revision: bool = False
+    #: The before/after diff and the consistency delta, when it was a revision.
+    revision: dict[str, Any] | None = None
+    #: What the alert manager did with this finding -- raised, escalated,
+    #: suppressed into an existing alert, or ignored.
+    alert: AlertOutcome | None = None
 
     @property
     def is_suspicious(self) -> bool:
@@ -107,8 +136,29 @@ class StreamVerdict:
                 "confidence": self.reconstruction.confidence,
                 "reason": self.reconstruction.reason,
             },
+            "is_revision": self.is_revision,
+            "revision": self.revision,
+            "alert": None
+            if self.alert is None
+            else {
+                "action": str(self.alert.action),
+                "reason": self.alert.reason,
+                "alert_id": self.alert.alert.alert_id if self.alert.alert else None,
+                "should_notify": self.alert.should_notify,
+            },
             "latency_ms": round(self.latency_ms, 2),
         }
+
+
+def _render(value: Any) -> Any:
+    """JSON-safe rendering of a field value for a revision diff."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, (int, float, str, bool)):
+        return value
+    return str(value)
 
 
 def _ev(
@@ -153,11 +203,26 @@ class StreamProcessor:
         self.consistency = consistency
 
         self.records: list[ManifestRecord] = list(batch_records)
+        self.by_id: dict[str, ManifestRecord] = {r.record_id: r for r in batch_records}
         self.by_container: dict[str, list[ManifestRecord]] = defaultdict(list)
         self.by_hash: dict[str, list[str]] = defaultdict(list)
         self.by_structural: dict[str, list[str]] = defaultdict(list)
         self.peer_weight: dict[str, list[float]] = defaultdict(list)
         self.peer_value: dict[str, list[float]] = defaultdict(list)
+
+        # --- live reconstructed manifest ------------------------------------
+        # The twist requires the reconstructed manifest and the report to stay
+        # current as records arrive, so the disposition of every record is held
+        # here and revised in place rather than recomputed from scratch.
+        self.dispositions: dict[str, Reconstruction] = {}
+        self.verdicts: dict[str, RecordVerdict] = {}
+        self.evidence_by_record: dict[str, list[Evidence]] = {}
+        #: record id -> how many times it has been revised on the feed.
+        self.revision_counts: dict[str, int] = defaultdict(int)
+        #: Revisions judged to be legitimate corrections, for the report.
+        self.corrections: list[dict[str, Any]] = []
+
+        self.alerts = AlertManager(cfg)
 
         for rec in batch_records:
             self._index(rec)
@@ -168,13 +233,18 @@ class StreamProcessor:
             (r.effective_time() for r in batch_records if r.effective_time()),
             default=world.sim_end,
         )
+        self._alert_threshold = cfg.float_(
+            "stream.alert_threshold", cfg.float_("fusion.thresholds.suspicious")
+        )
         self.processed = 0
         self.suspicious = 0
+        self.revisions = 0
         self.latencies: list[float] = []
 
     # -- indexing ---------------------------------------------------------
 
     def _index(self, rec: ManifestRecord) -> None:
+        self.by_id[rec.record_id] = rec
         if rec.container_id:
             self.by_container[rec.container_id].append(rec)
         self.by_hash[rec.content_hash()].append(rec.record_id)
@@ -187,9 +257,18 @@ class StreamProcessor:
 
     # -- per-event detection ----------------------------------------------
 
-    def _duplicate_evidence(self, rec: ManifestRecord) -> list[Evidence]:
-        """Exact and structural duplicate checks against the whole manifest."""
+    def _duplicate_evidence(
+        self, rec: ManifestRecord, *, exclude_self: bool = False
+    ) -> list[Evidence]:
+        """Exact and structural duplicate checks against the whole manifest.
+
+        ``exclude_self`` is set when the arriving record *revises* one already
+        indexed: its superseded version is still in the hash index, and
+        matching against it would report every revision as a duplicate of
+        itself.
+        """
         out: list[Evidence] = []
+        _ = exclude_self  # matches are filtered by record id below
         digest = rec.content_hash()
         matches = [r for r in self.by_hash.get(digest, []) if r != rec.record_id]
         if matches:
@@ -308,13 +387,22 @@ class StreamProcessor:
     # -- ingest -----------------------------------------------------------
 
     def ingest(self, row: dict[str, Any], *, sequence: int | None = None) -> StreamVerdict:
-        """Normalise, analyse and score one incoming event."""
+        """Normalise, analyse and score one incoming event or revision."""
         start = time.perf_counter()
         self.processed += 1
         sequence = sequence if sequence is not None else self.processed
 
         norm = normalize_rows([row], self.world, self.cfg, resolver=self.resolver)
         rec = norm.records[0]
+
+        # Is this a *revision* of a record already on the feed? The twist is
+        # that the attacker is inside the system editing in real time, so an
+        # arriving record_id we have seen before is an update, not an insert.
+        previous = self.by_id.get(rec.record_id)
+        is_revision = previous is not None
+        if is_revision:
+            self.revisions += 1
+            self.revision_counts[rec.record_id] += 1
 
         # The clock advances to the newest event. Without this every live
         # event would read as a FUTURE_EVENT against the batch clock.
@@ -323,7 +411,14 @@ class StreamProcessor:
             self.clock = when
 
         # --- scoped context: this container's history plus the new record ---
-        container_records = list(self.by_container.get(rec.container_id or "", []))
+        # On a revision the superseded version is dropped, or the container
+        # would appear to hold two conflicting records and every revision
+        # would manufacture a duplicate.
+        container_records = [
+            r
+            for r in self.by_container.get(rec.container_id or "", [])
+            if r.record_id != rec.record_id
+        ]
         container_records.append(rec)
         scoped = build_context(
             self.cfg,
@@ -359,9 +454,16 @@ class StreamProcessor:
             # records arrived.
             evidence.extend(e for e in produced if e.record_id == rec.record_id)
 
-        evidence.extend(self._duplicate_evidence(rec))
+        evidence.extend(self._duplicate_evidence(rec, exclude_self=is_revision))
         evidence.extend(self._statistical_evidence(rec))
         evidence.extend(self._provenance_evidence(rec))
+
+        revision_detail: dict[str, Any] | None = None
+        if previous is not None:
+            revision_evidence, revision_detail = self._revision_evidence(
+                previous, rec, scoped
+            )
+            evidence.extend(revision_evidence)
 
         # --- arbitrate, fuse, classify with the same weights as the batch ---
         arbitrated = arbitrate(scoped, evidence)
@@ -379,9 +481,34 @@ class StreamProcessor:
             reconstruction = reconstruct_record(scoped, rec, verdict, mine)
             self.suspicious += 1
 
-        # --- commit the record to state ---
+        # --- commit to state, and keep the live manifest current ------------
+        if previous is not None:
+            # Replace in place: the reconstructed manifest holds one row per
+            # record id, whatever the feed does to it.
+            self.records = [r for r in self.records if r.record_id != rec.record_id]
+            self.by_container[rec.container_id or ""] = [
+                r
+                for r in self.by_container.get(rec.container_id or "", [])
+                if r.record_id != rec.record_id
+            ]
         self.records.append(rec)
         self._index(rec)
+
+        self.verdicts[rec.record_id] = verdict
+        self.evidence_by_record[rec.record_id] = mine
+        if reconstruction is not None:
+            self.dispositions[rec.record_id] = reconstruction
+        else:
+            self.dispositions.pop(rec.record_id, None)
+
+        # --- fold into the alert set rather than notifying per event --------
+        outcome = self.alerts.observe(
+            rec,
+            verdict,
+            layers={str(t) for t in verdict.type_scores},
+            codes={str(item.code) for item in mine},
+            now=self.clock,
+        )
 
         latency = (time.perf_counter() - start) * 1000.0
         self.latencies.append(latency)
@@ -393,7 +520,391 @@ class StreamProcessor:
             evidence=mine,
             reconstruction=reconstruction,
             latency_ms=latency,
+            is_revision=is_revision,
+            revision=revision_detail,
+            alert=outcome,
         )
+
+
+    # -- live revisions (the Shifting Waters twist) -----------------------
+
+    def _revision_evidence(
+        self, previous: ManifestRecord, revised: ManifestRecord, scoped: AnalysisContext
+    ) -> tuple[list[Evidence], dict[str, Any]]:
+        """Judge an in-place edit to a record already on the feed.
+
+        The attacker is inside the system editing records in real time, but
+        operators also issue legitimate corrections -- a mistyped weight, a
+        departure stamp that arrives late. So the question is never "did this
+        record change?" (alerting on that would bury the operator in noise the
+        first time anyone fixed a typo) but **"did the change move the record
+        toward consistency or away from it?"**.
+
+        That is measured rather than enumerated. The scoped detectors are run
+        over the record as it *was* and as it now *is*, and the change in total
+        anomaly weight is the evidence. Nothing here encodes what a malicious
+        edit looks like, which is why it also covers revision attacks nobody
+        wrote a rule for.
+        """
+        cfg = self.cfg
+        epsilon = cfg.float_("stream.revision.improvement_epsilon", 0.05)
+        saturate = cfg.float_("stream.revision.degradation_saturates_at", 0.60)
+        ceiling = cfg.float_("stream.revision.max_severity", 0.90)
+
+        changed = {
+            field: (getattr(previous, field, None), getattr(revised, field, None))
+            for field in HASHED_FIELDS
+            if getattr(previous, field, None) != getattr(revised, field, None)
+        }
+
+        # How did each field change? The distinction is the whole mechanism.
+        #
+        #   filled    null -> value. A late-arriving field. Routine.
+        #   cleared   value -> null. Data loss, not an edit.
+        #   altered   value -> a DIFFERENT value. An already-reported fact has
+        #             been rewritten.
+        #
+        # A manifest record describes an event that has already happened. A
+        # LOADED event at 09:00 does not justify revising that event's weight
+        # at 14:00 -- the loading is over. So altering a populated field after
+        # the fact is intrinsically an edit of history, whoever did it, and
+        # that is the signal. Re-running the consistency engines alone cannot
+        # see most of these, because conservation is deliberately skipped
+        # across a port call containing a cargo event: it legitimately changes
+        # cargo, so the check stands down exactly where the attacker is working.
+        filled = [f for f, (before, after) in changed.items() if before is None and after is not None]
+        cleared = [f for f, (before, after) in changed.items() if before is not None and after is None]
+        altered = [
+            f
+            for f, (before, after) in changed.items()
+            if before is not None and after is not None
+        ]
+        material = [f for f in altered if f in _MATERIAL_FIELDS]
+
+        before_weight = self._anomaly_weight(previous, scoped)
+        after_weight = self._anomaly_weight(revised, scoped)
+        delta = after_weight - before_weight
+
+        detail: dict[str, Any] = {
+            "fields_changed": sorted(changed),
+            "filled": sorted(filled),
+            "cleared": sorted(cleared),
+            "altered": sorted(altered),
+            "material_fields_altered": sorted(material),
+            "before": {k: _render(v[0]) for k, v in changed.items()},
+            "after": {k: _render(v[1]) for k, v in changed.items()},
+            "anomaly_before": round(before_weight, 4),
+            "anomaly_after": round(after_weight, 4),
+            "anomaly_delta": round(delta, 4),
+            "revision_number": self.revision_counts[revised.record_id],
+        }
+
+        out: list[Evidence] = [
+            _ev(
+                revised.record_id,
+                EvidenceCode.RECORD_REVISED,
+                0.10,
+                f"Record revised on the live feed. "
+                f"{len(filled)} field(s) filled, {len(altered)} already-reported "
+                f"value(s) altered, {len(cleared)} cleared. "
+                f"Revision {detail['revision_number']}.",
+                engine="stream.revision",
+                **detail,
+            )
+        ]
+
+        # --- the chain is decisive where it has coverage ---
+        chain = self.chain
+        if chain is not None and getattr(chain, "height", 0):
+            committed = chain.committed_hash(revised.record_id)
+            if committed is not None:
+                was_matching = previous.content_hash() == committed
+                now_matching = revised.content_hash() == committed
+                if was_matching and not now_matching:
+                    out.append(
+                        _ev(
+                            revised.record_id,
+                            EvidenceCode.REVISION_CONTRADICTS_CHAIN,
+                            cfg.float_("stream.revision.chain_contradiction_severity", 0.95),
+                            f"The record matched its commitment in "
+                            f"{chain.block_of(revised.record_id)} and no longer does. "
+                            f"The edit happened after the block was sealed.",
+                            engine="stream.revision",
+                            committed_hash=committed,
+                            **detail,
+                        )
+                    )
+                    detail["verdict"] = "contradicts_chain"
+                    return out, detail
+                if now_matching and not was_matching:
+                    detail["verdict"] = "restores_chain"
+                    self.corrections.append(
+                        {
+                            "record_id": revised.record_id,
+                            "reason": "revision restored the committed hash",
+                            **detail,
+                        }
+                    )
+                    return out, detail
+
+        # --- did the edit move the record toward consistency or away? ---
+        if delta > epsilon:
+            drift = "degrades"
+        elif delta < -epsilon:
+            drift = "improves"
+        else:
+            drift = "neutral"
+
+        # --- altering an already-reported fact ---
+        if altered:
+            if drift == "degrades":
+                severity = ceiling
+                judgement = (
+                    "and the record became measurably less consistent as a result"
+                )
+            elif drift == "improves":
+                severity = 0.15
+                judgement = (
+                    "but the record became more consistent, which is what a genuine "
+                    "correction looks like"
+                )
+            else:
+                # No measurable consistency change. Still an edit of history,
+                # and on a material field that is worth an operator's eyes --
+                # but not a conviction.
+                severity = 0.62 if material else 0.30
+                judgement = (
+                    "with no measurable change in consistency either way, so the "
+                    "edit is unexplained rather than proven malicious"
+                )
+
+            out.append(
+                _ev(
+                    revised.record_id,
+                    EvidenceCode.REVISION_ALTERS_REPORTED_VALUE,
+                    severity,
+                    f"Already-reported value(s) rewritten after the event: "
+                    f"{', '.join(f'{f} {_render(changed[f][0])!r} -> {_render(changed[f][1])!r}' for f in sorted(altered)[:3])}"
+                    f"{' and others' if len(altered) > 3 else ''}. "
+                    f"Total anomaly weight moved {before_weight:.2f} -> "
+                    f"{after_weight:.2f} ({delta:+.2f}), {judgement}.",
+                    engine="stream.revision",
+                    **detail,
+                )
+            )
+
+        # --- the measured consistency delta, as its own corroborating line ---
+        if drift == "degrades":
+            severity = min(ceiling, (delta - epsilon) / max(1e-6, saturate) * ceiling)
+            out.append(
+                _ev(
+                    revised.record_id,
+                    EvidenceCode.REVISION_DEGRADES_CONSISTENCY,
+                    severity,
+                    f"The revision moved the container away from consistency: total "
+                    f"anomaly weight rose {before_weight:.2f} -> {after_weight:.2f} "
+                    f"({delta:+.2f}). A legitimate correction lowers this figure.",
+                    engine="stream.revision",
+                    **detail,
+                )
+            )
+
+        detail["verdict"] = (
+            "degrades"
+            if drift == "degrades"
+            else ("improves" if drift == "improves" else ("altered" if material else "neutral"))
+        )
+        if detail["verdict"] in ("improves", "neutral"):
+            self.corrections.append(
+                {
+                    "record_id": revised.record_id,
+                    "reason": (
+                        f"revision {'improved consistency' if drift == 'improves' else 'left consistency unchanged'}"
+                        f"; accepted without alerting"
+                    ),
+                    **detail,
+                }
+            )
+
+        return out, detail
+
+    def _anomaly_weight(self, rec: ManifestRecord, scoped: AnalysisContext) -> float:
+        """Total severity the scoped engines raise across the whole container.
+
+        Two deliberate choices:
+
+        *The sum of severities, not a fused probability.* This is a relative
+        comparison between two versions of one record, so the prior and the
+        saturation curve would only compress the signal being read.
+
+        *Container-wide, not record-scoped.* An edit's consequences frequently
+        land on a **neighbour** -- the cargo engine attributes a broken
+        conservation step to the record carrying the changed value in the
+        *next* port call, not to the one that was edited. Summing only the
+        edited record's own evidence measured a delta of exactly 0.0 for 15 of
+        30 known malicious edits. The question that matters is "did this edit
+        make the container less consistent?", and that is what this measures.
+        """
+        probe = AnalysisContext(
+            cfg=scoped.cfg,
+            world=scoped.world,
+            records=[r for r in scoped.records if r.record_id != rec.record_id] + [rec],
+            resolver=scoped.resolver,
+            clock=scoped.clock,
+            chain=scoped.chain,
+            consistency=scoped.consistency,
+        )
+        probe.build_indexes()
+
+        total = 0.0
+        for name in _SCOPED_ENGINES:
+            detector = DETECTOR_REGISTRY.get(name)
+            if detector is None:
+                continue
+            try:
+                for item in detector.run(probe):
+                    total += item.severity
+            except Exception:  # noqa: BLE001 - a probe must never break ingest
+                continue
+        return total
+
+    # -- live reconstructed manifest and report ---------------------------
+
+    def live_manifest(self, limit: int | None = None) -> list[dict[str, Any]]:
+        """The reconstructed manifest as of this instant.
+
+        Every record carries exactly one disposition, exactly as the batch
+        output does -- the twist requires this to stay current as records
+        arrive, not to be rebuilt on demand.
+        """
+        rows: list[dict[str, Any]] = []
+        for rec in self.records:
+            recon = self.dispositions.get(rec.record_id)
+            verdict = self.verdicts.get(rec.record_id)
+            rows.append(
+                {
+                    "record_id": rec.record_id,
+                    "container_id": rec.container_id,
+                    "shipment_id": rec.shipment_id,
+                    "owner": rec.owner,
+                    "cargo_type": rec.cargo_type,
+                    "port_id": rec.port_id,
+                    "event_type": rec.event_type,
+                    "timestamp": rec.timestamp.isoformat() if rec.timestamp else None,
+                    "weight": rec.weight,
+                    "declared_value": rec.declared_value,
+                    "classification": str(recon.classification) if recon else "ORIGINAL",
+                    "confidence": recon.confidence if recon else None,
+                    "tampering_probability": verdict.tampering_probability if verdict else 0.0,
+                    "tamper_class": str(verdict.tamper_class) if verdict else "CLEAN",
+                    "revisions": self.revision_counts.get(rec.record_id, 0),
+                    "reconstructed": recon.reconstructed if recon else None,
+                }
+            )
+        rows.sort(key=lambda r: -r["tampering_probability"])
+        return rows[:limit] if limit else rows
+
+    def live_summary(self) -> dict[str, Any]:
+        counts = {"ORIGINAL": 0, "REPAIRED": 0, "REMOVED": 0, "UNRECOVERABLE": 0}
+        by_class: dict[str, int] = {}
+        for rec in self.records:
+            recon = self.dispositions.get(rec.record_id)
+            counts[str(recon.classification) if recon else "ORIGINAL"] += 1
+        for verdict in self.verdicts.values():
+            key = str(verdict.tamper_class)
+            if key not in ("CLEAN", "BENIGN_ANOMALY"):
+                by_class[key] = by_class.get(key, 0) + 1
+        confidences = [
+            r.confidence
+            for r in self.dispositions.values()
+            if str(r.classification) in ("REPAIRED", "REMOVED")
+        ]
+        return {
+            "total_records": len(self.records),
+            "disposition": counts,
+            "by_tamper_class": by_class,
+            "suspicious": sum(by_class.values()),
+            "revisions_seen": sum(self.revision_counts.values()),
+            "records_revised": len(self.revision_counts),
+            "corrections_accepted": len(self.corrections),
+            "mean_repair_confidence": (
+                round(sum(confidences) / len(confidences), 4) if confidences else 0.0
+            ),
+        }
+
+    def live_report(self, top: int = 20) -> dict[str, Any]:
+        """The suspicious activity report, current as of the last event."""
+        ranked = sorted(
+            (
+                (rid, verdict)
+                for rid, verdict in self.verdicts.items()
+                if str(verdict.tamper_class) not in ("CLEAN", "BENIGN_ANOMALY")
+                and verdict.tampering_probability >= self._alert_threshold
+            ),
+            key=lambda kv: kv[1].tampering_probability,
+            reverse=True,
+        )
+
+        affected_owners: dict[str, int] = {}
+        affected_ports: dict[str, int] = {}
+        for rid, _verdict in ranked:
+            rec = self.by_id.get(rid)
+            if not rec:
+                continue
+            if rec.owner:
+                affected_owners[rec.owner] = affected_owners.get(rec.owner, 0) + 1
+            if rec.port_id:
+                affected_ports[rec.port_id] = affected_ports.get(rec.port_id, 0) + 1
+
+        entries = []
+        for rid, verdict in ranked[:top]:
+            rec = self.by_id.get(rid)
+            recon = self.dispositions.get(rid)
+            entries.append(
+                {
+                    "record_id": rid,
+                    "tampering_probability": verdict.tampering_probability,
+                    "tamper_class": str(verdict.tamper_class),
+                    "rationale": verdict.rationale,
+                    "revisions": self.revision_counts.get(rid, 0),
+                    "container_id": rec.container_id if rec else None,
+                    "port_id": rec.port_id if rec else None,
+                    "owner": rec.owner if rec else None,
+                    "classification": str(recon.classification) if recon else None,
+                    "contributions": [
+                        {"code": str(c.code), "label": c.label, "points": c.points}
+                        for c in verdict.contributions
+                    ],
+                    "evidence": [
+                        {
+                            "code": str(e.code),
+                            "severity": e.severity,
+                            "description": e.description,
+                        }
+                        for e in sorted(
+                            self.evidence_by_record.get(rid, []),
+                            key=lambda e: -e.severity,
+                        )[:6]
+                    ],
+                }
+            )
+
+        return {
+            "generated_at": self.clock.isoformat(),
+            "live": True,
+            "summary": self.live_summary(),
+            "alerts": {
+                "open": [a.as_dict() for a in self.alerts.open_alerts()[:50]],
+                **self.alerts.stats(),
+            },
+            "ranked_records": entries,
+            "affected": {
+                "owners": sorted(affected_owners.items(), key=lambda kv: -kv[1])[:10],
+                "ports": sorted(affected_ports.items(), key=lambda kv: -kv[1])[:10],
+            },
+            "corrections": self.corrections[-20:],
+            "throughput": self.stats()["latency_ms"],
+        }
 
     # -- stats ------------------------------------------------------------
 
@@ -402,6 +913,10 @@ class StreamProcessor:
         return {
             "processed": self.processed,
             "suspicious": self.suspicious,
+            "revisions": self.revisions,
+            "records_revised": len(self.revision_counts),
+            "corrections_accepted": len(self.corrections),
+            "alerts": self.alerts.stats(),
             "records_total": len(self.records),
             "latency_ms": {
                 "mean": round(sum(latencies) / len(latencies), 2) if latencies else 0.0,

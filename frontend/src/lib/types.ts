@@ -371,6 +371,29 @@ export interface StreamVerdictPayload {
     engine: string;
   }>;
   reconstruction: { classification: Classification; confidence: number; reason: string } | null;
+  /** True when this event revised a record already on the feed. */
+  is_revision: boolean;
+  /** The before/after diff and the consistency delta, when it was a revision. */
+  revision: {
+    fields_changed: string[];
+    filled: string[];
+    altered: string[];
+    material_fields_altered: string[];
+    before: Record<string, unknown>;
+    after: Record<string, unknown>;
+    anomaly_before: number;
+    anomaly_after: number;
+    anomaly_delta: number;
+    revision_number: number;
+    verdict: string;
+  } | null;
+  /** What the alert manager did: raised, escalated, suppressed or ignored. */
+  alert: {
+    action: "RAISED" | "ESCALATED" | "SUPPRESSED" | "IGNORED";
+    reason: string;
+    alert_id: string | null;
+    should_notify: boolean;
+  } | null;
   latency_ms: number;
 }
 
@@ -467,4 +490,65 @@ export interface EvaluationArtifacts {
   stream: unknown | null;
   directory: string;
   note: string;
+}
+
+export interface LiveAlert {
+  alert_id: string;
+  key: string;
+  entity_type: string;
+  status: "OPEN" | "ESCALATED" | "CRITICAL" | "CLOSED";
+  first_seen: string;
+  last_seen: string;
+  peak_probability: number;
+  latest_probability: number;
+  tamper_class: TamperClass;
+  event_count: number;
+  suppressed_count: number;
+  notify_count: number;
+  record_ids: string[];
+  evidence_layers: string[];
+  evidence_codes: string[];
+  narrative: string;
+}
+
+export interface AlertStats {
+  flagged_events: number;
+  notifications: number;
+  suppressed: number;
+  open_alerts: number;
+  closed_alerts: number;
+  compression_ratio: number;
+  suppression_rate: number;
+  by_status: Record<string, number>;
+}
+
+export interface StreamAlertsResponse {
+  active: boolean;
+  open: LiveAlert[];
+  closed?: number;
+  stats: AlertStats;
+}
+
+export interface LiveSummary {
+  total_records: number;
+  disposition: Record<"ORIGINAL" | "REPAIRED" | "REMOVED" | "UNRECOVERABLE", number>;
+  by_tamper_class: Record<string, number>;
+  suspicious: number;
+  revisions_seen: number;
+  records_revised: number;
+  corrections_accepted: number;
+  mean_repair_confidence: number;
+}
+
+export interface StreamManifestResponse {
+  summary: LiveSummary;
+  records: Array<{
+    record_id: string;
+    container_id: string | null;
+    classification: string;
+    confidence: number | null;
+    tampering_probability: number;
+    tamper_class: TamperClass;
+    revisions: number;
+  }>;
 }

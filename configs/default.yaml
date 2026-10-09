@@ -215,6 +215,13 @@ fusion:
     # be floored without also flooring the per-transition check, which fires
     # on the innocent half of conservation conflicts.
     CARGO_DRIFT_UNEXPLAINED: { min_severity: 0.30, floor: 0.72 }
+    # Live revisions. A record describes an event that already happened, so
+    # rewriting a populated field afterwards is an edit of history. Floored
+    # into the live-alert band rather than the batch-conviction band: it earns
+    # an operator's attention, not an automatic verdict. A revision that
+    # breaks a hash the chain already committed is in a different class.
+    REVISION_ALTERS_REPORTED_VALUE: { min_severity: 0.60, floor: 0.62 }
+    REVISION_CONTRADICTS_CHAIN:     { min_severity: 0.90, floor: 0.93 }
     # A container's cargo class does not change in transit, and cargo does not
     # roughly double with no loading event. The severity ramps with the size
     # of the violation, so these thresholds only admit gross ones.
@@ -287,6 +294,58 @@ nodes:
 
 stream:
   events_per_second: 2.0
+  # Fraction of live events that are an attacker editing a record already
+  # delivered, and the fraction that are an operator correcting one. Both
+  # arrive the same way -- a row under a record_id already seen.
+  live_revision_rate: 0.05
+  correction_rate: 0.04
+
+  # ----------------------------------------------------------------
+  # Live revisions (the Shifting Waters twist).
+  #
+  # The feed carries updates to records already delivered, because the
+  # attacker is inside the system editing in real time. Operators also issue
+  # legitimate corrections, so the question is never "did this record change?"
+  # but "did the change move it toward consistency or away from it?".
+  #
+  # The discriminator is measured, not enumerated: the scoped detectors are
+  # re-run over the record as it was and as it now is, and the *delta* in
+  # anomaly weight is the evidence. That generalises to revision attacks
+  # nobody wrote a rule for, which is the whole point of the twist.
+  # ----------------------------------------------------------------
+  revision:
+    # Anomaly delta below which a revision is treated as a correction.
+    # Negative deltas (the record became more consistent) are corrections.
+    improvement_epsilon: 0.05
+    # Delta at which the degradation severity saturates.
+    degradation_saturates_at: 0.60
+    max_severity: 0.90
+    # A revision that makes a committed record's hash diverge is near-proof.
+    chain_contradiction_severity: 0.95
+
+  # ----------------------------------------------------------------
+  # Alert management: the answer to "how do you not flood operators".
+  #
+  # A campaign spans many events for one container. Raising one alert per
+  # flagged event would bury the operator, so findings are folded into a
+  # single open alert per entity that updates in place and escalates only on
+  # genuinely new information.
+  # ----------------------------------------------------------------
+  alerting:
+    # Findings are grouped by this key, in order of preference.
+    group_by: [container_id, record_id]
+    # An open alert absorbs further findings silently unless the probability
+    # rises by at least this much, or a new evidence *layer* appears.
+    escalation_delta: 0.12
+    # Escalate unconditionally once this probability is reached.
+    critical_probability: 0.90
+    # An alert with no new findings for this long is closed automatically.
+    # Measured in *cargo-event* time, which spans weeks, so this is 14 days
+    # rather than the couple of hours a wall-clock system would use.
+    cooldown_minutes: 20160
+    # Hard ceiling on open alerts, newest-highest-severity retained.
+    max_open: 500
+
   # A live alert is triage, not adjudication: it prompts an analyst to look,
   # whereas a batch verdict holds a shipment at a port. The live threshold is
   # therefore lower than the batch one. It is also a fairer comparison, since
