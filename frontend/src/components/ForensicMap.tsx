@@ -28,9 +28,10 @@ import type {
 
 import { pct, severityColour, ts } from "../lib/format";
 import type { GeoJSONFeatureCollection, PortStat, RouteStat, Trajectory } from "../lib/types";
+const APIKEYCARTO=import.meta.env.VITE_CARTO_API_KEY;
 
 const CARTO_DARK =
-  "https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json";
+  "https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json?key="+APIKEYCARTO;
 
 export interface MapLayers {
   ports: boolean;
@@ -133,15 +134,28 @@ export function ForensicMap({
     if (!container.current || map.current) return;
 
     const instance = new maplibregl.Map({
-      container: container.current,
-      style: CARTO_DARK,
-      center: [78, 14],
-      zoom: compact ? 2.1 : 2.8,
-      attributionControl: compact ? false : { compact: true },
-      dragRotate: false,
-      pitchWithRotate: false,
+    container: container.current!,
+    style: CARTO_DARK,
+    center: [78, 14],
+    zoom: compact ? 2.1 : 2.8,
+    attributionControl: compact ? false : { compact: true },
+    dragRotate: false,
+    pitchWithRotate: false,
+
+    transformRequest: (url) => {
+      if (!url.includes("basemaps.cartocdn.com")) {
+        return { url };
+      }
+
+      const resourceUrl = new URL(url);
+      resourceUrl.searchParams.set("key", APIKEYCARTO);
+
+      return { url: resourceUrl.toString() };
+    },
     });
+
     map.current = instance;
+    (window as any).__MAKAR_MAP__ = instance;
 
     if (!compact) {
       instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -387,7 +401,7 @@ export function ForensicMap({
 
   return (
     <div className={`relative h-full w-full ${className}`}>
-      <div ref={container} className="absolute inset-0" />
+      <div ref={container} className="absolute inset-0 h-full w-full"/>
       {styleFailed && (
         <div className="absolute inset-0 flex items-center justify-center bg-obsidian-950/80">
           <div className="text-center max-w-xs">
