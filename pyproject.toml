@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "makar"
+version = "1.0.0"
+description = "Distributed cargo forensics, provenance and reconstruction platform"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.scripts]
+makar = "scripts.makar_cli:app"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools]
+packages = ["core", "generator", "blockchain", "evaluation", "backend", "llm"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+  "E501",   # line length: enforced by review, not by a counter
+  "B008",   # function call in default arg: FastAPI's Depends/Query idiom
+  # Every flagged closure is defined and invoked within the same loop
+  # iteration (the `_port`/`_ref` field helpers in the normaliser, the
+  # conservation `flush`), so late binding cannot occur. Binding each one as a
+  # default argument would add noise to signatures to silence a warning that
+  # describes a bug this code cannot have.
+  "B023",
+  "SIM105", # try/except/pass reads clearer than contextlib.suppress for
+            # genuinely optional imports
+  "UP038",  # isinstance tuples stay: the PEP 604 form is slower on hot paths
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true

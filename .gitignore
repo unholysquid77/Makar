@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Makar runtime artifacts. Every dataset is reproducible from its seed:
+#   python scripts/generate.py --seed <n> --records 5000 --out <dir>
+out/
+out_*/
+*.db
+*.sqlite
+*.sqlite3
+nodes/
+.makar_cache/
+
+# Ground truth must never be committed alongside public manifests
+out/**/ground_truth.json
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

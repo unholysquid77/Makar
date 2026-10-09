@@ -1,0 +1,308 @@
+# ============================================================
+# Makar default configuration
+# Every numeric threshold in the forensic pipeline is declared
+# here. Nothing in core/ may hardcode a tunable constant.
+# ============================================================
+
+world:
+  seed: 481516
+  records: 5000
+  n_ports: 18
+  n_vessels: 26
+  n_routes: 24
+  n_owners: 20
+  n_shipments: 200
+  containers_per_shipment: [1, 4]
+  # Simulation clock: the "now" against which future events are judged.
+  sim_start: "2026-01-01T00:00:00Z"
+  sim_end: "2026-03-01T00:00:00Z"
+
+vessel:
+  # Knots. Used by the geospatial feasibility engine (spec 10).
+  min_speed_knots: 8.0
+  cruise_speed_knots: 18.0
+  max_speed_knots: 28.0
+  # Great-circle distance is shorter than a real sea lane; inflate.
+  sea_route_factor: 1.25
+
+port:
+  dwell_hours_min: 6.0
+  dwell_hours_max: 72.0
+  dwell_hours_mean: 20.0
+  dwell_hours_sigma: 10.0
+
+corruption:
+  # Fraction of records touched by each attack class.
+  modified_rate: 0.020
+  deleted_rate: 0.010
+  duplicated_rate: 0.012
+  fabricated_rate: 0.008
+  # Compound / coordinated attacks (spec 6.2)
+  compound_attacks: 6
+  coordinated_cluster_size: [4, 12]
+  # Harmless noise (spec 6.3) — must NOT be flagged as tampering.
+  noise_rate: 0.060
+
+detection:
+  # Active reasoning layers, by registry name. Adding a layer is a new
+  # registered detector plus a line here plus a fusion weight -- no
+  # downstream code knows which detectors ran.
+  enabled:
+    - temporal
+    - geospatial
+    - route
+    - cargo
+    - duplicate
+    - statistical
+    - graph
+    - provenance
+
+  temporal:
+    future_event_grace_hours: 0.0
+    future_event_min_severity: 0.55
+    future_event_max_severity: 0.98
+    event_order_after_delivery_severity: 0.78
+    event_order_before_creation_severity: 0.75
+    degenerate_transit_severity: 0.92
+    reverse_chronology_severity: 0.95
+    simultaneous_presence_severity: 0.93
+    # Dwell time outside [p_low, p_high] of the port distribution is anomalous.
+    dwell_z_threshold: 3.0
+    dwell_max_severity: 0.60
+  geospatial:
+    # required_speed / max_speed ratio at which severity saturates.
+    speed_ratio_hard: 2.0
+    speed_ratio_soft: 1.05
+    min_elapsed_seconds: 60
+  route:
+    off_route_severity: 0.84
+    # A destination earlier on the same route is a plausible short shipment,
+    # so it scores well below an off-route rewrite.
+    destination_off_route_severity: 0.82
+    destination_on_route_severity: 0.55
+    sequence_break_severity: 0.70
+
+  cargo:
+    # Relative tolerance on conservation equality before it counts as evidence.
+    weight_rel_tolerance: 0.02
+    # Cumulative drift tolerance across a whole unexplained run of transitions.
+    # Deliberately far below the *sum* of the per-step tolerances: a series of
+    # individually-legal steps that together move cargo a long way is itself a
+    # conservation violation. This is a general constraint, not a rule aimed at
+    # any particular attack.
+    cumulative_rel_tolerance: 0.045
+    cumulative_min_steps: 2
+    value_rel_tolerance: 0.05
+    container_count_tolerance: 0
+    max_severity: 0.88
+    count_not_conserved_severity: 0.62
+    owner_changed_severity: 0.80
+    cargo_type_mutated_severity: 0.83
+    capacity_max_severity: 0.86
+  duplicate:
+    fuzzy_threshold: 0.88
+    near_duplicate_window_hours: 24.0
+    exact_severity: 0.90
+    structural_severity: 0.78
+    fuzzy_severity_scale: 0.70
+  statistical:
+    numeric_fields: [weight, container_count, declared_value]
+    robust_z_threshold: 3.5
+    iqr_multiplier: 3.0
+    isolation_forest_contamination: 0.03
+    lof_neighbors: 20
+    dbscan_eps: 0.75
+    dbscan_min_samples: 6
+    max_severity: 0.55
+  graph:
+    orphan_severity: 0.86
+    conflict_severity: 0.85
+    lineage_break_severity: 0.80
+    # Missing-event findings land on the records *bracketing* a hole, which are
+    # usually innocent, so the band stays below the decisive range.
+    missing_event_min_severity: 0.40
+    missing_event_max_severity: 0.80
+    skipped_port_severity: 0.68
+    sequence_gap_severity: 0.30
+  blockchain:
+    hash_mismatch_severity: 1.00
+    node_divergence_severity: 0.90
+
+# ------------------------------------------------------------
+# Evidence fusion (spec 17).
+# Weights are LOG-ODDS contributions (log likelihood ratios), so they add in
+# logit space and the UI's point breakdown genuinely sums to the result.
+# Calibrated on the tuning seed and reported on a different seed -- see
+# scripts/calibrate.py and docs/DESIGN_DECISIONS.md.
+# ------------------------------------------------------------
+fusion:
+  weights:
+    # Calibration note: the prior sits at the observed 5% base rate, so its
+    # log-odds are -2.94. A layer whose strongest finding is a *physical
+    # impossibility* must therefore weigh more than ~3.0 to convict on its own,
+    # because such a finding genuinely should. A layer that only reports
+    # unusualness must weigh less, so that it never can. The split below is
+    # that principle, not a fitted curve.
+    BLOCKCHAIN: 4.50     # cryptographic: a hash mismatch is near-proof
+    DUPLICATE: 2.20
+    TEMPORAL: 2.20
+    SPATIAL: 2.00
+    ROUTE: 2.00
+    CARGO: 1.95
+    GRAPH: 1.85
+    IDENTITY: 1.20
+    STATISTICAL: 0.80    # spec 13: evidence only, never a verdict on its own
+    FORMAT: -0.90        # negative: benign messiness argues AGAINST deliberate editing
+
+  # Per-code adjustments, applied to severity before weighting. Lets a single
+  # finding be down-weighted without misrepresenting which layer produced it.
+  # Raising a layer's weight also raises its *weakest* codes, so those are
+  # damped back down here. Without this, lifting TEMPORAL to convict on
+  # simultaneous presence would also let a long dwell convict on its own.
+  code_multipliers:
+    DWELL_TIME_ANOMALY: 0.35      # spec 9.5: anomalous, not automatically malicious
+    SEQUENCE_GAP: 0.40            # id gaps under-count once ids are recycled
+    EVENT_ORDER_VIOLATION: 0.70
+    # Fires on the records *bracketing* a hole, which are usually innocent.
+    # It evidences a deletion nearby, not tampering with this record.
+    MISSING_EXPECTED_EVENT: 0.70
+    LINEAGE_BREAK: 0.70           # one failed relationship, vs ORPHAN's two or more
+    COORDINATE_PORT_MISMATCH: 0.80
+    IQR_OUTLIER: 0.60
+    DBSCAN_NOISE: 0.50
+    LOF_OUTLIER: 0.70
+
+  # Observed base rate of tampering. Acts as the prior; a single weak signal
+  # must overcome it, which is what keeps the false-alarm rate down.
+  prior_tampering_rate: 0.05
+
+  # Geometric discount applied within a type and again across types, so
+  # corroboration is rewarded but volume cannot outrank one hard violation.
+  saturation: 0.75
+
+  # ----------------------------------------------------------------
+  # Decisive evidence (spec 1.2: prefer deterministic, explainable
+  # evidence over opaque scoring).
+  #
+  # Some findings are not probabilistic. A container cannot be in two ports
+  # at once; a byte-identical duplicate of another row is not a coincidence;
+  # an arrival cannot precede its own departure. Such a finding should not
+  # have to out-argue a 5% prior in log-odds space -- it settles the matter.
+  #
+  # When evidence of one of these codes exceeds `min_severity`, the fused
+  # probability is floored at `floor`. Raising the layer *weights* instead
+  # was tried and rejected: it lifted every weak code in those layers too,
+  # trading 6 extra false positives for 3 extra detections.
+  # ----------------------------------------------------------------
+  decisive_floors:
+    SIMULTANEOUS_PRESENCE:  { min_severity: 0.85, floor: 0.88 }
+    EXACT_DUPLICATE:        { min_severity: 0.85, floor: 0.86 }
+    RECORD_HASH_MISMATCH:   { min_severity: 0.80, floor: 0.92 }
+    RECORD_NOT_IN_CHAIN:    { min_severity: 0.80, floor: 0.86 }
+    REVERSE_CHRONOLOGY:     { min_severity: 0.85, floor: 0.84 }
+    IMPOSSIBLE_TRANSIT:     { min_severity: 0.85, floor: 0.86 }
+    FUTURE_EVENT:           { min_severity: 0.85, floor: 0.84 }
+    SPEED_INFEASIBLE:       { min_severity: 0.90, floor: 0.84 }
+    WEIGHT_EXCEEDS_CAPACITY: { min_severity: 0.80, floor: 0.80 }
+    # Two or more independent relationships failed: nothing in the manifest or
+    # the world model accounts for the claim. A cargo event at a port the
+    # container never reached is in this class.
+    ORPHAN_RECORD:          { min_severity: 0.80, floor: 0.82 }
+    # Cargo is conserved. A sustained unexplained drift across a whole run of
+    # transitions is a hard violation, and it is the *only* finding a gradual
+    # siphon produces -- by design, since each individual step stays inside
+    # the per-transition tolerance. It gets its own code precisely so it can
+    # be floored without also flooring the per-transition check, which fires
+    # on the innocent half of conservation conflicts.
+    CARGO_DRIFT_UNEXPLAINED: { min_severity: 0.30, floor: 0.72 }
+    # A container's cargo class does not change in transit, and cargo does not
+    # roughly double with no loading event. The severity ramps with the size
+    # of the violation, so these thresholds only admit gross ones.
+    # Cargo-conservation floors were tried here and REJECTED: measured across
+    # three seeds they cost 11 extra false positives for 0.003 recall
+    # (P 0.985 -> 0.936). A large unexplained weight change is strong evidence
+    # but not a logical impossibility -- unlike a container being in two ports
+    # at once -- so it belongs in the weighted score, not above it.
+
+  thresholds:
+    suspicious: 0.50
+    high_confidence: 0.85
+
+classifier:
+  # Minimum fused probability before a class label is assigned at all.
+  min_probability: 0.50
+  # Evidence-type signatures that vote for each class.
+  deleted_gap_min_severity: 0.55
+  fabricated_lineage_min: 0.60
+
+reconstruction:
+  repair_threshold: 0.70
+  removal_threshold: 0.65
+  max_candidates: 8
+  # Candidate generation strategies, in priority order.
+  strategies: [neighbor_interpolation, conservation_solve, route_schedule, historical_median, remove]
+  candidate_weights:
+    route_consistency: 1.0
+    temporal_consistency: 1.0
+    cargo_conservation: 1.2
+    graph_consistency: 0.9
+    historical_pattern: 0.7
+    blockchain_state: 1.3
+    neighbor_agreement: 1.0
+
+timeline:
+  # Attack-window clustering (spec 25).
+  #
+  # Buckets are measured in *cargo-event* time, not attacker-action time (see
+  # core/timeline.py for why). Suspicious records spread across the whole
+  # two-month shipping window, so the spec's minute-scale buckets collapsed
+  # every window into a single bucket and the histogram carried no shape.
+  # Three-hour buckets with a twelve-hour join give windows that are legible
+  # and still tight enough to be a claim about a specific set of voyages.
+  bucket_minutes: 180
+  min_cluster_size: 4
+  gap_tolerance_minutes: 720
+
+blockchain:
+  records_per_block: 50
+  genesis_timestamp: "2026-01-01T00:00:00Z"
+  sign_blocks: true
+  # Fraction of the event timeline that has reached consensus and been sealed
+  # into blocks. Records after the cut-off are genuinely uncommitted: the chain
+  # has nothing to say about them and the forensic engines carry them alone.
+  # See docs/DESIGN_DECISIONS.md D9.
+  sealed_fraction: 0.85
+
+nodes:
+  count: 4
+  ids: [A, B, C, D]
+  topology:
+    A: [B, C]
+    B: [A, D]
+    C: [A, D]
+    D: [B, C]
+  # Demonstration: node C is given divergent state (spec 23 / 36 step 7).
+  compromised: [C]
+  base_port: 8801
+
+stream:
+  events_per_second: 2.0
+  # A live alert is triage, not adjudication: it prompts an analyst to look,
+  # whereas a batch verdict holds a shipment at a port. The live threshold is
+  # therefore lower than the batch one. It is also a fairer comparison, since
+  # the incremental path sees less corroborating context per event than a full
+  # batch analysis does.
+  alert_threshold: 0.35
+  # Attack patterns the batch data never contained (spec 30 / 36 step 9).
+  novel_attack_patterns: [ghost_transfer, weight_siphon, identity_swap]
+
+llm:
+  provider: disabled
+  model: ""
+  max_tokens: 1200
+  temperature: 0.1
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+  cors_origins: ["http://localhost:5173", "http://127.0.0.1:5173"]
