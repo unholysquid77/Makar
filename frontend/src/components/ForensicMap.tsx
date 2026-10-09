@@ -28,10 +28,35 @@ import type {
 
 import { pct, severityColour, ts } from "../lib/format";
 import type { GeoJSONFeatureCollection, PortStat, RouteStat, Trajectory } from "../lib/types";
-const APIKEYCARTO=import.meta.env.VITE_CARTO_API_KEY;
+//: CARTO basemaps now require an API key. Supply one in `frontend/.env.local`
+//: as VITE_CARTO_API_KEY to get the dark-matter basemap underneath the
+//: forensic layers.
+const APIKEYCARTO = import.meta.env.VITE_CARTO_API_KEY;
 
 const CARTO_DARK =
-  "https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json?key="+APIKEYCARTO;
+  "https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json?key=" +
+  APIKEYCARTO;
+
+/**
+ * Self-contained fallback style, used when no CARTO key is configured.
+ *
+ * Every forensic layer this component draws -- ports, routes, suspicious
+ * records, observed and reconstructed trajectories -- is vector geometry we
+ * own, so it renders perfectly well over a plain background. Without this, a
+ * clone with no key gets a black rectangle and the whole geospatial story is
+ * invisible, which is the worst possible failure for a demo someone else is
+ * running.
+ */
+const OFFLINE_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {},
+  glyphs: undefined,
+  layers: [
+    { id: "bg", type: "background", paint: { "background-color": "#070a0f" } },
+  ],
+};
+
+const HAS_BASEMAP = Boolean(APIKEYCARTO);
 
 export interface MapLayers {
   ports: boolean;
@@ -135,7 +160,7 @@ export function ForensicMap({
 
     const instance = new maplibregl.Map({
     container: container.current!,
-    style: CARTO_DARK,
+    style: HAS_BASEMAP ? CARTO_DARK : OFFLINE_STYLE,
     center: [78, 14],
     zoom: compact ? 2.1 : 2.8,
     attributionControl: compact ? false : { compact: true },
@@ -246,7 +271,7 @@ export function ForensicMap({
           "circle-stroke-color": "#06080b",
         },
       });
-      if (!compact) {
+      if (!compact && HAS_BASEMAP) {
         instance.addLayer({
           id: "ports-label",
           type: "symbol",
@@ -402,16 +427,17 @@ export function ForensicMap({
   return (
     <div className={`relative h-full w-full ${className}`}>
       <div ref={container} className="absolute inset-0 h-full w-full"/>
-      {styleFailed && (
-        <div className="absolute inset-0 flex items-center justify-center bg-obsidian-950/80">
-          <div className="text-center max-w-xs">
-            <div className="text-2xs uppercase tracking-[0.14em] text-anomaly-low">
-              Basemap unavailable
-            </div>
-            <div className="mt-1.5 text-2xs text-ink-500">
-              The CARTO basemap could not be fetched. Geometry still renders; only
-              the background tiles are missing.
-            </div>
+      {(styleFailed || !HAS_BASEMAP) && (
+        <div className="absolute right-2 top-2 max-w-[230px] px-2.5 py-2 rounded-xs
+                        bg-obsidian-950/90 border border-hairline pointer-events-none">
+          <div className="text-2xs uppercase tracking-[0.12em] text-anomaly-low">
+            No basemap
+          </div>
+          <div className="mt-1 text-2xs text-ink-500 leading-relaxed">
+            {styleFailed
+              ? "The CARTO basemap could not be fetched."
+              : "Set VITE_CARTO_API_KEY in frontend/.env.local for the basemap."}{" "}
+            Ports, routes, trajectories and suspicious records all still render.
           </div>
         </div>
       )}

@@ -53,22 +53,52 @@ contain. Reconstruction is therefore entirely the forensic engines' work — and
 where the chain *does* reach, hashing a candidate repair either **confirms** it
 outright or refutes it.
 
-### Live stream — attack patterns absent from the batch data
+### Live stream — and the Shifting Waters twist
 
-900 events, 48 attacks, 852 legitimate, **0 false alarms on untouched
-containers**, 1.6 ms mean latency per event.
+Mid-event the attacker went live: *"the attacker has started modifying records
+in real time"*, with a feed of incoming **and updated** records.
+
+977 events (884 legitimate), **0 false alarms on untouched containers**,
+**0.60 ms** mean latency per event.
+
+| metric | value |
+|---|---:|
+| precision | **1.000** |
+| recall | 0.688 |
+| F1 | **0.815** |
 
 | pattern | what it defeats | event recall | campaign recall |
 |---|---|---:|---:|
+| `live_revision` | immutability — editing after the fact | **100%** | **100%** |
 | `ghost_transfer` | lineage | 100% | **100%** |
-| `identity_swap` | identity continuity | 25% | **57%** |
-| `weight_siphon` | the per-step conservation *tolerance* | 26% | **50%** |
+| `identity_swap` | identity continuity | 25% | 57% |
+| `weight_siphon` | the per-step conservation *tolerance* | 26% | 50% |
 
-Campaign recall is the operationally meaningful figure: a siphon spans many
-events, its *onset* contradicts prior history, and once the state is
-consistently wrong there is nothing left to contradict. Both are reported.
+**The twist's hardest requirement was precision, not detection.** The feed
+carries attacker edits and legitimate operator corrections, identical in shape
+— both are simply a row arriving under a record_id already seen:
 
----
+| | events | outcome |
+|---|---:|---|
+| attacker rewrites an already-reported value | 45 | **45 caught (100%)** |
+| operator supplies a value that was missing | 32 | **0 false alarms (0%)** |
+
+No rule describes what a malicious edit looks like. A manifest record describes
+an event that *already happened*, so rewriting a populated field afterwards is
+an edit of history — and whether it moved the record *toward* consistency or
+*away* from it decides which kind it was.
+
+**Operator load** is treated as its own problem: a correct alert repeated forty
+times is still a flood. Findings fold into one open alert per container, so 68
+findings became 58 notifications — and 40 findings on a single container
+produce exactly **one**.
+
+Campaign recall is the operationally meaningful figure for siphons and swaps:
+the *onset* contradicts prior history, but once the state is consistently wrong
+there is nothing left to contradict. Both are reported.
+
+→ **[docs/TWIST_RESPONSE.md](docs/TWIST_RESPONSE.md)** — what changed, what it
+cost, and the five things traded away for speed.
 
 ## How to Run
 
@@ -149,7 +179,9 @@ the figures above.
 ## Environment Variables
 
 **None are required.** The system runs fully with nothing set, including the
-LLM layer, which is disabled by default.
+LLM layer, which is disabled by default. The one that visibly changes the demo
+is `VITE_CARTO_API_KEY`: without it the geo map renders all of its own
+geometry but has no basemap tiles underneath.
 
 | variable | default | purpose |
 |---|---|---|
@@ -163,6 +195,7 @@ LLM layer, which is disabled by default.
 | `MAKAR_LLM_BASE_URL` | — | For `local` / OpenAI-compatible endpoints. |
 | `MAKAR__<path>` | — | Override any config value, `__` for nesting: `MAKAR__detection__geospatial__speed_ratio_hard=1.5` |
 | `VITE_API_BASE` | *(empty)* | Frontend only. Point the UI at a non-proxied API origin. |
+| `VITE_CARTO_API_KEY` | — | Frontend only, in `frontend/.env.local`. CARTO basemaps require a key. **Without it the map still draws every forensic layer** over a plain background and says so on screen. |
 
 Copy `.env.example` to `.env` as a starting point. **The LLM is an explanation
 interface only** — it cannot modify the manifest, the verdicts or the chain,
@@ -201,7 +234,7 @@ Then `evaluation.json`, `report.md` / `report.json` and
 | **Record Investigation** | Observation → Evidence → Inference → Decision, with the arithmetic and the blame arbitration shown. |
 | **Reconstruction** | Every candidate the engine generated, with per-criterion scores — not just the winner. |
 | **Provenance Monitor** | Chain ledger, sealed coverage, and the node that diverges while passing its own integrity check. |
-| **Live Feed** | Replay the stream and watch unseen attack patterns get caught. |
+| **Live Feed** | Replay the stream: unseen attack patterns, live record revisions, the live reconstructed manifest, and operator load. |
 | **Evaluation Console** | The scorecard, including the ablation and the calibration gap. |
 
 ---
@@ -250,11 +283,17 @@ conflict pair. It took false positives from 198 to 2.
 
 ## Documentation
 
+- **[docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md)** — the full platform
+  walkthrough: demo script, every feature, every formula, every number, and the
+  questions a reviewer is likely to ask.
+- **[docs/TWIST_RESPONSE.md](docs/TWIST_RESPONSE.md)** — the Shifting Waters
+  twist: what changed, what it cost, what was traded for speed.
 - **[docs/APPROACH_DOSSIER.md](docs/APPROACH_DOSSIER.md)** — approach and
   reasoning, alternatives rejected, strengths and weaknesses, scalability, and
-  how the solution changed for the live-feed twist.
-- **[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)** — seventeen
-  decisions with the measurements behind them, including the ones that failed.
+  how the solution changed for the live feed.
+- **[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)** — every design
+  decision with the measurement behind it, including the ones that failed and
+  were reverted.
 - **[docs/DATA_DICTIONARY.md](docs/DATA_DICTIONARY.md)** — every manifest
   field, every evidence code, every attack class.
 
@@ -264,6 +303,8 @@ conflict pair. It took false positives from 198 to 2.
 
 ```
 core/            detection, confidence, reconstruction, graph, normalisation
+  alerting.py    folds findings into open alerts, so operators see problems
+  streaming.py   incremental analysis, live revisions, live manifest
   detection/     the eight engines + shared context and segmentation
   confidence/    arbitration, fusion, classifier
   reconstruction/candidate generation and scoring
